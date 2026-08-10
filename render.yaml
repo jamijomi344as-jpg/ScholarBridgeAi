@@ -1,0 +1,46 @@
+# Render.com blueprint for ScholarBridge AI
+# Create the database first (it auto-provisions a managed PostgreSQL), then
+# the web service. Set the secret env vars (marked sync:false) in the Render
+# dashboard after the first deploy.
+
+databases:
+  - name: scholarbridge-db
+    plan: free
+    databaseName: scholarbridge
+    user: scholarbridge
+
+services:
+  - type: web
+    name: scholarbridge-ai
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run db:push && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scholarbridge-db
+          property: connectionString
+      - key: NODE_VERSION
+        value: "22"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      # Optional payment keys (only needed if you configure real Payme/Click).
+      - key: PAYME_MERCHANT_ID
+        sync: false
+      - key: PAYME_KEY
+        sync: false
+      - key: PAYME_PASSWORD
+        sync: false
+      - key: CLICK_SERVICE_ID
+        sync: false
+      - key: CLICK_MERCHANT_ID
+        sync: false
+      - key: CLICK_MERCHANT_USER_ID
+        sync: false
+      - key: CLICK_SECRET_KEY
+        sync: false
