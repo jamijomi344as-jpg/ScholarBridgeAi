@@ -1,0 +1,176 @@
+export interface StudentProfileData {
+  id?: number;
+  name?: string;
+  degreeLevel: string;
+  targetMajor: string;
+  gpa: number;
+  gpaScale: number;
+  ieltsScore?: number | null;
+  toeflScore?: number | null;
+  satScore?: number | null;
+  greScore?: number | null;
+  budgetAnnualUsd: number;
+  preferredCountries?: string | string[];
+  needScholarship: boolean;
+  extracurriculars?: string | null;
+  workExperienceYears?: number | null;
+  researchPublications?: number | null;
+}
+
+export interface UniversityData {
+  id: number;
+  name: string;
+  country: string;
+  city: string;
+  flagEmoji: string;
+  worldRanking: number;
+  degreeLevel: string;
+  programMajor: string;
+  annualTuitionUsd: number;
+  annualLivingEstUsd: number;
+  minGpa: number;
+  minIelts: number;
+  minSat?: number | null;
+  acceptanceRate: number;
+  postStudyWorkVisaYears: number;
+  description: string;
+  highlights: string;
+  websiteUrl: string;
+  imageUrl: string;
+}
+
+export interface ScholarshipData {
+  id: number;
+  title: string;
+  provider: string;
+  country: string;
+  coverageType: string;
+  amountUsdValue: number;
+  deadline: string;
+  degreeLevels: string;
+  eligibleMajors: string;
+  minGpa?: number | null;
+  minIelts?: number | null;
+  financialNeedBased?: boolean | null;
+  meritBased?: boolean | null;
+  description: string;
+  requirements: string;
+  websiteUrl: string;
+}
+
+export function calculateUniversityMatch(profile: StudentProfileData, uni: UniversityData) {
+  let score = 70;
+
+  // Normalize GPA to 4.0 scale
+  const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
+  const gpaDiff = normGpa - uni.minGpa;
+
+  if (gpaDiff >= 0.5) score += 15;
+  else if (gpaDiff >= 0.2) score += 10;
+  else if (gpaDiff >= 0) score += 5;
+  else if (gpaDiff >= -0.3) score -= 12;
+  else score -= 25;
+
+  // Language Requirement Check
+  if (profile.ieltsScore && uni.minIelts) {
+    if (profile.ieltsScore >= uni.minIelts + 0.5) score += 8;
+    else if (profile.ieltsScore >= uni.minIelts) score += 4;
+    else score -= 15;
+  }
+
+  // Budget Alignment
+  const totalUniCost = uni.annualTuitionUsd + uni.annualLivingEstUsd;
+  if (profile.budgetAnnualUsd >= totalUniCost) {
+    score += 10;
+  } else {
+    const budgetDeficit = totalUniCost - profile.budgetAnnualUsd;
+    if (budgetDeficit > 30000 && !profile.needScholarship) {
+      score -= 20;
+    } else if (budgetDeficit > 15000) {
+      score -= 10;
+    }
+  }
+
+  // Preferred Country Boost
+  let preferredList: string[] = [];
+  try {
+    if (typeof profile.preferredCountries === "string") {
+      preferredList = JSON.parse(profile.preferredCountries);
+    } else if (Array.isArray(profile.preferredCountries)) {
+      preferredList = profile.preferredCountries;
+    }
+  } catch {
+    preferredList = [];
+  }
+
+  if (preferredList.some(c => c.toLowerCase() === uni.country.toLowerCase())) {
+    score += 8;
+  }
+
+  // Research / Work Experience Boost for Master/PhD or top ranking
+  if ((profile.researchPublications || 0) > 0 || (profile.workExperienceYears || 0) > 0) {
+    score += 5;
+  }
+
+  // Clamp Score
+  const matchScore = Math.min(99, Math.max(35, Math.round(score)));
+
+  // Categorize
+  let matchCategory: "Reach" | "Match" | "Safety" = "Match";
+  if (matchScore >= 85) {
+    matchCategory = "Safety";
+  } else if (matchScore >= 68) {
+    matchCategory = "Match";
+  } else {
+    matchCategory = "Reach";
+  }
+
+  return { matchScore, matchCategory };
+}
+
+export function calculateScholarshipMatch(profile: StudentProfileData, scholarship: ScholarshipData) {
+  let score = 65;
+
+  // GPA check
+  const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
+  if (scholarship.minGpa) {
+    if (normGpa >= scholarship.minGpa + 0.4) score += 15;
+    else if (normGpa >= scholarship.minGpa) score += 8;
+    else score -= 20;
+  }
+
+  // IELTS check
+  if (scholarship.minIelts && profile.ieltsScore) {
+    if (profile.ieltsScore >= scholarship.minIelts) score += 10;
+    else score -= 15;
+  }
+
+  // Degree Level alignment
+  try {
+    const levels: string[] = JSON.parse(scholarship.degreeLevels);
+    if (levels.includes("All") || levels.some(l => l.toLowerCase() === profile.degreeLevel.toLowerCase())) {
+      score += 10;
+    } else {
+      score -= 25;
+    }
+  } catch {
+    // fallback
+  }
+
+  // Need based vs profile budget
+  if (scholarship.financialNeedBased && profile.needScholarship) {
+    score += 10;
+  }
+
+  // Merit based vs GPA & Publications
+  if (scholarship.meritBased) {
+    if (normGpa >= 3.6 || (profile.researchPublications || 0) > 0) {
+      score += 10;
+    }
+  }
+
+  const matchScore = Math.min(98, Math.max(30, Math.round(score)));
+  const isEligible = matchScore >= 60;
+
+  return { matchScore, isEligible };
+}
