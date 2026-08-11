@@ -14,6 +14,7 @@ import { ForumSection } from "@/components/ForumSection";
 import { CoursesSection } from "@/components/CoursesSection";
 import { PaymentsSection } from "@/components/PaymentsSection";
 import { RewardsSection } from "@/components/RewardsSection";
+import { AdminPanel } from "@/components/AdminPanel";
 import { PremiumGate } from "@/components/PremiumGate";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
@@ -348,6 +349,8 @@ export default function Home() {
         {activeTab === "payments" && <PaymentsSection activeProfile={activeProfile} />}
 
         {activeTab === "rewards" && <RewardsSection activeProfile={activeProfile} />}
+
+        {activeTab === "admin" && <AdminPanel activeProfile={activeProfile} />}
       </main>
 
       {/* Footer */}
