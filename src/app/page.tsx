@@ -14,6 +14,7 @@ import { ForumSection } from "@/components/ForumSection";
 import { CoursesSection } from "@/components/CoursesSection";
 import { PaymentsSection } from "@/components/PaymentsSection";
 import { RewardsSection } from "@/components/RewardsSection";
+import { PremiumGate } from "@/components/PremiumGate";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export default function Home() {
@@ -298,15 +299,51 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "sop" && <AiSopStudio activeProfile={activeProfile} />}
+        {activeTab === "sop" && (
+          <PremiumGate
+            profileId={activeProfile?.id ?? null}
+            title="AI SOP & Essays is Premium"
+            description="Generate, evaluate and review your Statement of Purpose with AI — an exclusive Premium feature."
+            onUpgrade={() => setActiveTab("payments")}
+          >
+            <AiSopStudio activeProfile={activeProfile} />
+          </PremiumGate>
+        )}
 
-        {activeTab === "tasks" && <TaskRoadmap activeProfile={activeProfile} />}
+        {activeTab === "tasks" && (
+          <PremiumGate
+            profileId={activeProfile?.id ?? null}
+            title="Tasks & Roadmap is Premium"
+            description="Build and track your study-abroad application roadmap — an exclusive Premium feature."
+            onUpgrade={() => setActiveTab("payments")}
+          >
+            <TaskRoadmap activeProfile={activeProfile} />
+          </PremiumGate>
+        )}
 
         {activeTab === "chat" && <AiChatMentor activeProfile={activeProfile} />}
 
-        {activeTab === "forum" && <ForumSection activeProfile={activeProfile} isModerator />}
+        {activeTab === "forum" && (
+          <PremiumGate
+            profileId={activeProfile?.id ?? null}
+            title="Community Forum is Premium"
+            description="Read community topics, join discussions and post your own threads — an exclusive Premium feature."
+            onUpgrade={() => setActiveTab("payments")}
+          >
+            <ForumSection activeProfile={activeProfile} isModerator />
+          </PremiumGate>
+        )}
 
-        {activeTab === "courses" && <CoursesSection activeProfile={activeProfile} />}
+        {activeTab === "courses" && (
+          <PremiumGate
+            profileId={activeProfile?.id ?? null}
+            title="Video Courses are Premium"
+            description="Watch video courses, take quizzes and earn certificates — an exclusive Premium feature."
+            onUpgrade={() => setActiveTab("payments")}
+          >
+            <CoursesSection activeProfile={activeProfile} />
+          </PremiumGate>
+        )}
 
         {activeTab === "payments" && <PaymentsSection activeProfile={activeProfile} />}
 

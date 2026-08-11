@@ -66,7 +66,7 @@ export function Navbar({
     { id: "universities", label: "University Explorer", icon: Search },
     { id: "scholarships", label: "Scholarship Hub", icon: Award },
     { id: "tracker", label: "My Applications", icon: GraduationCap },
-    { id: "sop", label: "AI SOP & Essays", icon: FileText },
+    { id: "sop", label: "AI SOP & Essays", icon: FileText, premium: true },
     { id: "tasks", label: "Tasks & Roadmap", icon: CheckSquare, premium: true },
     { id: "chat", label: "AI Mentor", icon: Bot },
     { id: "forum", label: "Community Forum", icon: MessagesSquare, premium: true },

@@ -20,6 +20,29 @@ import { eq } from "drizzle-orm";
 
 export async function seedDatabase() {
   try {
+    // Ensure there is always at least one admin profile so the Admin Panel
+    // stays reachable — even on databases that were seeded before the
+    // is_admin column existed. If no admin exists, promote the first profile.
+    const [existingAdmin] = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.isAdmin, true))
+      .limit(1);
+    if (!existingAdmin) {
+      const [firstProfile] = await db
+        .select({ id: studentProfiles.id })
+        .from(studentProfiles)
+        .orderBy(studentProfiles.id)
+        .limit(1);
+      if (firstProfile) {
+        await db
+          .update(studentProfiles)
+          .set({ isAdmin: true })
+          .where(eq(studentProfiles.id, firstProfile.id));
+        console.log("Promoted profile", firstProfile.id, "to admin (no admin existed).");
+      }
+    }
+
     // Check if universities already seeded
     const existingUnis = await db.select().from(universities).limit(1);
     if (existingUnis.length > 0) {

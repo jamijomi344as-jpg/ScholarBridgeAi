@@ -38,6 +38,14 @@ export function PremiumGate({ profileId, title, description, onUpgrade, children
     };
   }, [profileId]);
 
+  if (isPremium === null) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-xs font-semibold text-slate-400 shadow-xs">
+        Checking premium access…
+      </div>
+    );
+  }
+
   if (isPremium) {
     return <>{children}</>;
   }
@@ -67,7 +75,7 @@ export function PremiumGate({ profileId, title, description, onUpgrade, children
           >
             Buy Premium
           </button>
-          <p className="text-[11px] text-slate-400">Unlock Tasks, Community Forum &amp; Courses</p>
+          <p className="text-[11px] text-slate-400">Unlock AI SOP Studio, Tasks, Community Forum &amp; Courses</p>
         </div>
       </div>
     </div>
