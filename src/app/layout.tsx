@@ -2,9 +2,18 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+const LOGO_URL = "https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png";
+
 export const metadata: Metadata = {
-  title: "Arena Next.js PostgreSQL Starter",
-  description: "Starter template with Next.js, Drizzle, and PostgreSQL.",
+  title: {
+    default: "ScholarBridge AI",
+    template: "%s | ScholarBridge AI",
+  },
+  description: "ScholarBridge AI — Global Admissions & Scholarship Discovery",
+  icons: {
+    icon: LOGO_URL,
+    apple: LOGO_URL,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
