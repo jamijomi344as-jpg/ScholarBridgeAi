@@ -429,7 +429,7 @@ export async function seedDatabase() {
       needScholarship: true,
       extracurriculars: "Lead Developer of Campus Open Source Project, Winner of National Hackathon 2024, Undergraduate Research Assistant in ML",
       workExperienceYears: 1,
-      researchPublications: 1
+      researchPublications: 1,
       isAdmin: true
     }).returning();
 
