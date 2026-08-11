@@ -38,6 +38,8 @@ export interface StudentProfile {
   extracurriculars?: string | null;
   workExperienceYears?: number | null;
   researchPublications?: number | null;
+  preferredLocale?: string;
+  isAdmin?: boolean;
 }
 
 interface NavbarProps {
@@ -65,13 +67,19 @@ export function Navbar({
     { id: "scholarships", label: "Scholarship Hub", icon: Award },
     { id: "tracker", label: "My Applications", icon: GraduationCap },
     { id: "sop", label: "AI SOP & Essays", icon: FileText },
-    { id: "tasks", label: "Tasks & Roadmap", icon: CheckSquare },
+    { id: "tasks", label: "Tasks & Roadmap", icon: CheckSquare, premium: true },
     { id: "chat", label: "AI Mentor", icon: Bot },
-    { id: "forum", label: "Community Forum", icon: MessagesSquare },
-    { id: "courses", label: "Courses", icon: Video },
+    { id: "forum", label: "Community Forum", icon: MessagesSquare, premium: true },
+    { id: "courses", label: "Courses", icon: Video, premium: true },
     { id: "payments", label: "Premium", icon: Crown },
     { id: "rewards", label: "Rewards & Referrals", icon: Gift },
   ];
+
+  // Admin sees an extra management tab.
+  const isAdmin = !!activeProfile?.isAdmin;
+  const displayItems = isAdmin
+    ? [...navItems, { id: "admin", label: "Admin Panel", icon: Crown }]
+    : navItems;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs">
@@ -140,21 +148,34 @@ export function Navbar({
 
         {/* Navigation Tabs */}
         <div className="flex overflow-x-auto space-x-1 sm:space-x-2 py-2 no-scrollbar border-t border-slate-100">
-          {navItems.map((item) => {
+          {displayItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
+            // Premium items are styled gold; admin is dark; others default indigo.
+            const premium = (item as { premium?: boolean }).premium;
+            const isAdminTab = item.id === "admin";
+            const activeCls = isActive
+              ? premium
+                ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-900 shadow-xs font-bold"
+                : isAdminTab
+                ? "bg-slate-900 text-white shadow-xs font-bold"
+                : "bg-indigo-600 text-white shadow-xs font-semibold"
+              : premium
+              ? "text-amber-700 hover:bg-amber-50 hover:text-amber-800 border border-amber-200"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100";
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all duration-150 ${
-                  isActive
-                    ? "bg-indigo-600 text-white shadow-xs font-semibold"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                }`}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all duration-150 ${activeCls}`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-slate-500"}`} />
+                <Icon className={`h-4 w-4 ${isActive ? "" : premium ? "text-amber-500" : "text-slate-500"}`} />
                 {item.label}
+                {premium && !isActive && (
+                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                    Pro
+                  </span>
+                )}
               </button>
             );
           })}
