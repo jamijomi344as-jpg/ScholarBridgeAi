@@ -79,8 +79,13 @@ export function Navbar({
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-200">
-              <GraduationCap className="h-6 w-6" />
+            <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-md shadow-indigo-200 border border-slate-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
+                alt="ScholarBridge Logo"
+                className="h-10 w-10 object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
