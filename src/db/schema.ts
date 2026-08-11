@@ -19,6 +19,7 @@ export const studentProfiles = pgTable("student_profiles", {
   workExperienceYears: integer("work_experience_years").default(1),
   researchPublications: integer("research_publications").default(0),
   preferredLocale: text("preferred_locale").notNull().default("en"),
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -142,7 +143,7 @@ export const forumReplies = pgTable("forum_replies", {
 export const forumLikes = pgTable("forum_likes", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
-  targetType: text("target_type").notNull(), // 'thread' | 'reply'
+  targetType: text("target_type").notNull(),
   targetId: integer("target_id").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -150,10 +151,10 @@ export const forumLikes = pgTable("forum_likes", {
 export const forumReports = pgTable("forum_reports", {
   id: serial("id").primaryKey(),
   reporterId: integer("reporter_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
-  targetType: text("target_type").notNull(), // 'thread' | 'reply'
+  targetType: text("target_type").notNull(),
   targetId: integer("target_id").notNull(),
   reason: text("reason").notNull(),
-  status: text("status").notNull().default("open"), // open | resolved | dismissed
+  status: text("status").notNull().default("open"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   resolvedAt: timestamp("resolved_at"),
 });
@@ -211,7 +212,7 @@ export const quizQuestions = pgTable("quiz_questions", {
   id: serial("id").primaryKey(),
   quizId: integer("quiz_id").references(() => quizzes.id, { onDelete: "cascade" }).notNull(),
   question: text("question").notNull(),
-  options: text("options").notNull().default("[]"), // JSON string array
+  options: text("options").notNull().default("[]"),
   correctOptionIndex: integer("correct_option_index").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),
 });
@@ -220,8 +221,8 @@ export const quizAttempts = pgTable("quiz_attempts", {
   id: serial("id").primaryKey(),
   quizId: integer("quiz_id").references(() => quizzes.id, { onDelete: "cascade" }).notNull(),
   profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
-  score: integer("score").notNull().default(0), // 0-100
-  answers: text("answers").notNull().default("[]"), // JSON string array of chosen indices
+  score: integer("score").notNull().default(0),
+  answers: text("answers").notNull().default("[]"),
   passed: boolean("passed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -240,11 +241,11 @@ export const certificates = pgTable("certificates", {
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
   profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "set null" }),
-  provider: text("provider").notNull(), // 'payme' | 'click'
+  provider: text("provider").notNull(),
   providerTransactionId: text("provider_transaction_id").notNull().default(""),
   amount: doublePrecision("amount").notNull(),
   currency: text("currency").notNull().default("UZS"),
-  status: text("status").notNull().default("pending"), // pending | paid | cancelled | refunded
+  status: text("status").notNull().default("pending"),
   purpose: text("purpose").notNull().default("subscription"),
   relatedEntityId: integer("related_entity_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -255,7 +256,7 @@ export const subscriptions = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
   profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
   plan: text("plan").notNull().default("premium"),
-  status: text("status").notNull().default("active"), // active | expired | canceled
+  status: text("status").notNull().default("active"),
   currentPeriodEnd: timestamp("current_period_end").notNull(),
   paymentId: integer("payment_id").references(() => payments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -294,7 +295,7 @@ export const badges = pgTable("badges", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   iconUrl: text("icon_url").notNull().default("🎖️"),
-  criteria: text("criteria").notNull().default("points"), // e.g. "points>=100" | "referral" | "course_complete"
+  criteria: text("criteria").notNull().default("points"),
 });
 
 export const userBadges = pgTable("user_badges", {
@@ -309,7 +310,7 @@ export const referrals = pgTable("referrals", {
   referrerProfileId: integer("referrer_profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
   referredProfileId: integer("referred_profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }),
   referralCode: text("referral_code").notNull().unique(),
-  status: text("status").notNull().default("pending"), // pending | completed
+  status: text("status").notNull().default("pending"),
   pointsAwarded: integer("points_awarded").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
