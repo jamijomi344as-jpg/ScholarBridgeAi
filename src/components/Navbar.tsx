@@ -17,7 +17,7 @@ import {
   Crown,
   Gift,
   Trophy,
-  ChevronDown,
+  ShieldCheck,
 } from "lucide-react";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
@@ -56,10 +56,9 @@ export interface StudentProfile {
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  profiles: StudentProfile[];
   activeProfile: StudentProfile | null;
-  setActiveProfile: (profile: StudentProfile) => void;
   onOpenProfileModal: (isNew?: boolean) => void;
+  onSwitchProfile?: () => void;
   onStartOnboarding?: () => void;
   onLocaleChange?: (locale: string) => void;
 }
@@ -67,10 +66,9 @@ interface NavbarProps {
 export function Navbar({
   activeTab,
   setActiveTab,
-  profiles,
   activeProfile,
-  setActiveProfile,
   onOpenProfileModal,
+  onSwitchProfile,
   onStartOnboarding,
   onLocaleChange,
 }: NavbarProps) {
@@ -116,25 +114,31 @@ export function Navbar({
     </div>
   );
 
-  const ProfileSwitcher = (
-    <div className="relative flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 min-w-0">
-      <User className="h-4 w-4 text-slate-500 ml-2 shrink-0" />
-      <select
-        value={activeProfile?.id || ""}
-        onChange={(e) => {
-          const p = profiles.find((item) => item.id === Number(e.target.value));
-          if (p) setActiveProfile(p);
-        }}
-        className="bg-transparent text-xs font-semibold text-slate-800 py-1 pl-1 pr-5 focus:outline-none cursor-pointer w-full truncate"
-        title="Switch active profile"
+  // Shows ONLY the currently signed-in profile (no list of other users).
+  // Switching happens via the dedicated profile picker (onSwitchProfile).
+  const ProfileChip = (
+    <div className="flex items-center gap-2 min-w-0">
+      <div
+        className="flex items-center gap-2 bg-slate-100 rounded-lg px-2.5 py-1.5 border border-slate-200 min-w-0 flex-1"
+        title={activeProfile?.email}
       >
-        {profiles.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name} ({p.targetMajor})
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="h-3 w-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+        <User className="h-4 w-4 text-slate-500 shrink-0" />
+        <span className="truncate text-xs font-semibold text-slate-800">
+          {activeProfile?.name || "No profile"}
+        </span>
+        {isAdmin && (
+          <ShieldCheck className="h-3.5 w-3.5 text-slate-700 shrink-0" />
+        )}
+      </div>
+      {onSwitchProfile && (
+        <button
+          onClick={onSwitchProfile}
+          className="shrink-0 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1.5 rounded-lg border border-indigo-200 transition-colors"
+          title="Switch profile / admin account"
+        >
+          Switch
+        </button>
+      )}
     </div>
   );
 
@@ -198,7 +202,7 @@ export function Navbar({
         {/* Bottom: profile switcher + actions */}
         <div className="px-4 py-4 border-t border-slate-100 space-y-2.5">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1">Student profile</p>
-          {ProfileSwitcher}
+          {ProfileChip}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => onOpenProfileModal(false)}
@@ -226,7 +230,7 @@ export function Navbar({
           <div className="flex items-center justify-between h-14 gap-2">
             {Logo}
             <div className="flex items-center gap-1.5 min-w-0">
-              <div className="max-w-[160px]">{ProfileSwitcher}</div>
+              <div className="max-w-[180px] flex-1">{ProfileChip}</div>
               <button
                 onClick={() => onOpenProfileModal(false)}
                 className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1.5 rounded-lg border border-indigo-200 shrink-0"

@@ -19,6 +19,7 @@ import { PremiumGate } from "@/components/PremiumGate";
 import { FaqSection } from "@/components/FaqSection";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { LandingPage } from "@/components/LandingPage";
+import { ProfilePicker } from "@/components/ProfilePicker";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export default function Home() {
@@ -28,11 +29,13 @@ export default function Home() {
   // "app"     = the main app (sidebar navigation).
   const [view, setView] = useState<"landing" | "wizard" | "app">("landing");
 
-  // Profile management
+  // Profile management — the app works with ONE signed-in profile per browser.
+  // `profiles` is only used by the profile picker (admin sign-in etc.).
   const [profiles, setProfiles] = useState<StudentProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<StudentProfile | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isNewProfile, setIsNewProfile] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   // Saved Data
   const [savedUniversities, setSavedUniversities] = useState<SavedUniversityItem[]>([]);
@@ -83,41 +86,67 @@ export default function Home() {
     }
   }, [activeProfile?.id]);
 
-  const fetchProfiles = async () => {
+  /** Load the full profile list — only used by the profile picker. */
+  const loadAllProfiles = async () => {
     try {
       const res = await fetch("/api/profiles");
       const data = await res.json();
-      if (data.profiles && data.profiles.length > 0) {
-        setProfiles(data.profiles);
-        // Prefer the profile this browser last used, else the first one.
-        let chosen = data.profiles[0];
-        try {
-          const lastId = Number(localStorage.getItem("scholarbridge_active_profile"));
-          const match = data.profiles.find((p: StudentProfile) => p.id === lastId);
-          if (match) chosen = match;
-        } catch {
-          // ignore
-        }
-        setActiveProfile(chosen);
-      }
+      if (data.profiles) setProfiles(data.profiles);
     } catch (err) {
       console.error("Error fetching profiles:", err);
     }
   };
 
-  useEffect(() => {
-    fetchProfiles();
-    // Returning visitor (this browser already finished onboarding) goes
-    // straight into the app; everyone else sees the English landing page.
+  /**
+   * On mount, restore ONLY the profile this browser signed in with
+   * (localStorage). If there is none, show the English landing page.
+   * Other profiles are never auto-loaded.
+   */
+  const loadStoredProfile = async () => {
     try {
-      if (localStorage.getItem("scholarbridge_onboarded") === "1") {
-        setView("app");
+      const storedId = Number(localStorage.getItem("scholarbridge_active_profile"));
+      if (storedId) {
+        const res = await fetch(`/api/profiles/${storedId}`);
+        const data = await res.json();
+        if (res.ok && data.profile) {
+          setActiveProfile(data.profile);
+          setView("app");
+          return;
+        }
       }
+    } catch (err) {
+      console.error("Error restoring profile:", err);
+    }
+    setView("landing");
+  };
+
+  useEffect(() => {
+    loadStoredProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Open the profile picker (admin sign-in, switching accounts). */
+  const openProfilePicker = async () => {
+    await loadAllProfiles();
+    setIsPickerOpen(true);
+  };
+
+  const handlePickProfile = (p: StudentProfile) => {
+    setActiveProfile(p);
+    try {
+      localStorage.setItem("scholarbridge_active_profile", String(p.id));
     } catch {
       // ignore
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setIsPickerOpen(false);
+    setView("app");
+    setActiveTab("dashboard");
+  };
+
+  const handleAddNewFromPicker = () => {
+    setIsPickerOpen(false);
+    setView("wizard");
+  };
 
   const fetchSavedUniversities = async (profileId: number) => {
     try {
@@ -174,6 +203,11 @@ export default function Home() {
       }
       setProfiles((prev) => [data.profile, ...prev]);
       setActiveProfile(data.profile);
+      try {
+        localStorage.setItem("scholarbridge_active_profile", String(data.profile.id));
+      } catch {
+        // ignore
+      }
     } else if (activeProfile) {
       const res = await fetch(`/api/profiles/${activeProfile.id}`, {
         method: "PUT",
@@ -332,21 +366,17 @@ export default function Home() {
 
   const startOnboarding = () => setView("wizard");
 
-  // Existing users can skip the landing page and go straight into the app.
+  // Existing users (e.g. the admin) pick their profile from a list instead
+  // of being auto-dropped onto the first profile.
   const enterApp = () => {
-    try {
-      localStorage.setItem("scholarbridge_onboarded", "1");
-    } catch {
-      // ignore
-    }
-    setView("app");
+    openProfilePicker();
   };
 
   // ---- First visit: English landing page ----
   if (view === "landing") {
     return (
       <LocaleProvider>
-        <LandingPage onStart={startOnboarding} onEnterApp={profiles.length > 0 ? enterApp : undefined} />
+        <LandingPage onStart={startOnboarding} onEnterApp={enterApp} />
       </LocaleProvider>
     );
   }
@@ -373,13 +403,12 @@ export default function Home() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        profiles={profiles}
         activeProfile={activeProfile}
-        setActiveProfile={setActiveProfile}
         onOpenProfileModal={(isNew) => {
           setIsNewProfile(!!isNew);
           setIsProfileModalOpen(true);
         }}
+        onSwitchProfile={openProfilePicker}
         onStartOnboarding={startOnboarding}
         onLocaleChange={handleLocaleChange}
       />
@@ -519,6 +548,16 @@ export default function Home() {
         onClose={() => setIsProfileModalOpen(false)}
         profile={activeProfile}
         onSave={handleSaveProfile}
+      />
+
+      {/* Profile picker — the only place the full list is shown (admin sign-in) */}
+      <ProfilePicker
+        open={isPickerOpen}
+        profiles={profiles}
+        currentId={activeProfile?.id ?? null}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={handlePickProfile}
+        onAddNew={handleAddNewFromPicker}
       />
       </div>
     </LocaleProvider>
