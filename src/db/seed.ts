@@ -16,7 +16,7 @@ import {
   levels,
   badges,
 } from "./schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 /** Local 8-char referral code generator (avoids importing gamification here). */
 function makeReferralCode(): string {
@@ -30,9 +30,56 @@ function makeReferralCode(): string {
 
 export async function seedDatabase() {
   try {
-    // Ensure there is always at least one admin profile so the Admin Panel
-    // stays reachable — even on databases that were seeded before the
-    // is_admin column existed. If no admin exists, promote the first profile.
+    // Ensure the owner's admin account exists ("Hushnudbek") so the sign-in
+    // form always has a target. Credentials are configurable via env vars:
+    //   ADMIN_NAME  (default "Hushnudbek")
+    //   ADMIN_EMAIL (default "hushnudbek@gmail.com")
+    const adminName = process.env.ADMIN_NAME || "Hushnudbek";
+    const adminEmail = (process.env.ADMIN_EMAIL || "hushnudbek@gmail.com").toLowerCase();
+    try {
+      const [adminProfile] = await db
+        .select()
+        .from(studentProfiles)
+        .where(sql`lower(${studentProfiles.email}) = ${adminEmail}`)
+        .limit(1);
+      if (adminProfile) {
+        if (!adminProfile.isAdmin || adminProfile.name !== adminName) {
+          await db
+            .update(studentProfiles)
+            .set({
+              name: adminName,
+              isAdmin: true,
+              onboardingCompleted: true,
+              onboardingStep: 8,
+            })
+            .where(eq(studentProfiles.id, adminProfile.id));
+          console.log(`Ensured admin account "${adminName}" (profile ${adminProfile.id}).`);
+        }
+      } else {
+        const [created] = await db
+          .insert(studentProfiles)
+          .values({
+            name: adminName,
+            email: adminEmail,
+            degreeLevel: "Master",
+            targetMajor: "Computer Science",
+            gpa: 3.5,
+            gpaScale: 4.0,
+            budgetAnnualUsd: 25000,
+            preferredCountries: JSON.stringify(["United States", "United Kingdom", "Canada", "Germany"]),
+            needScholarship: true,
+            isAdmin: true,
+            onboardingCompleted: true,
+            onboardingStep: 8,
+          })
+          .returning();
+        console.log(`Created admin account "${adminName}" (${adminEmail}, profile ${created.id}).`);
+      }
+    } catch (err) {
+      console.error("Failed to ensure admin account:", err);
+    }
+
+    // Safety fallback: if for any reason no admin exists at all, promote the first profile.
     const [existingAdmin] = await db
       .select({ id: studentProfiles.id })
       .from(studentProfiles)

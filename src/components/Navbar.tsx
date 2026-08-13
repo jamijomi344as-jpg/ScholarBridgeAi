@@ -134,9 +134,9 @@ export function Navbar({
         <button
           onClick={onSwitchProfile}
           className="shrink-0 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1.5 rounded-lg border border-indigo-200 transition-colors"
-          title="Switch profile / admin account"
+          title="Sign in / switch account"
         >
-          Switch
+          {activeProfile ? "Switch" : "Sign in"}
         </button>
       )}
     </div>

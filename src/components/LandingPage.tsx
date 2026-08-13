@@ -18,6 +18,7 @@ import {
 interface LandingPageProps {
   onStart: () => void;
   onEnterApp?: () => void;
+  onSignIn?: () => void;
 }
 
 /**
@@ -25,7 +26,7 @@ interface LandingPageProps {
  * organic search). Explains what ScholarBridge does, then "Start for free"
  * launches the step-by-step onboarding wizard.
  */
-export function LandingPage({ onStart, onEnterApp }: LandingPageProps) {
+export function LandingPage({ onStart, onEnterApp, onSignIn }: LandingPageProps) {
   const features = [
     {
       icon: Search,
@@ -79,6 +80,31 @@ export function LandingPage({ onStart, onEnterApp }: LandingPageProps) {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
+      {/* ===== Top bar ===== */}
+      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center overflow-hidden shadow-sm border border-slate-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
+                alt="ScholarBridge Logo"
+                className="h-8 w-8 object-cover"
+              />
+            </div>
+            <span className="font-extrabold text-slate-900 tracking-tight">ScholarBridge</span>
+          </div>
+          {onSignIn && (
+            <button
+              onClick={onSignIn}
+              className="text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl border border-indigo-200 transition-colors"
+            >
+              Sign in
+            </button>
+          )}
+        </div>
+      </header>
+
       {/* ===== Hero ===== */}
       <section className="relative overflow-hidden bg-gradient-to-br from-indigo-700 via-violet-700 to-purple-800 text-white">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_20%_20%,white_1px,transparent_1px)] bg-[length:28px_28px]" />

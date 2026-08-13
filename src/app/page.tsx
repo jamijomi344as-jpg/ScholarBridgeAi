@@ -37,6 +37,32 @@ export default function Home() {
   const [isNewProfile, setIsNewProfile] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
+  // IDs of the accounts created / signed-in WITHIN THIS BROWSER. Other
+  // people's accounts are never shown — only these.
+  const [myProfileIds, setMyProfileIds] = useState<number[]>(() => {
+    try {
+      const raw = localStorage.getItem("scholarbridge_device_profiles");
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.map(Number).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const rememberProfile = (id: number) => {
+    try {
+      const arr = [...myProfileIds];
+      if (!arr.includes(id)) arr.push(id);
+      localStorage.setItem("scholarbridge_device_profiles", JSON.stringify(arr));
+      setMyProfileIds(arr);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Only profiles this browser owns — used by the picker.
+  const deviceProfiles = profiles.filter((p) => myProfileIds.includes(p.id));
+
   // Saved Data
   const [savedUniversities, setSavedUniversities] = useState<SavedUniversityItem[]>([]);
   const [savedScholarships, setSavedScholarships] = useState<SavedScholarshipItem[]>([]);
@@ -110,6 +136,7 @@ export default function Home() {
         const data = await res.json();
         if (res.ok && data.profile) {
           setActiveProfile(data.profile);
+          rememberProfile(storedId);
           setView("app");
           return;
         }
@@ -133,6 +160,7 @@ export default function Home() {
 
   const handlePickProfile = (p: StudentProfile) => {
     setActiveProfile(p);
+    rememberProfile(p.id);
     try {
       localStorage.setItem("scholarbridge_active_profile", String(p.id));
     } catch {
@@ -141,6 +169,21 @@ export default function Home() {
     setIsPickerOpen(false);
     setView("app");
     setActiveTab("dashboard");
+  };
+
+  /** Admin sign-in (username + email) — instantly opens the admin account. */
+  const handleAdminLogin = (p: StudentProfile) => {
+    setActiveProfile(p);
+    rememberProfile(p.id);
+    setProfiles((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
+    try {
+      localStorage.setItem("scholarbridge_active_profile", String(p.id));
+    } catch {
+      // ignore
+    }
+    setIsPickerOpen(false);
+    setView("app");
+    setActiveTab("admin");
   };
 
   const handleAddNewFromPicker = () => {
@@ -203,6 +246,7 @@ export default function Home() {
       }
       setProfiles((prev) => [data.profile, ...prev]);
       setActiveProfile(data.profile);
+      rememberProfile(data.profile.id);
       try {
         localStorage.setItem("scholarbridge_active_profile", String(data.profile.id));
       } catch {
@@ -342,6 +386,7 @@ export default function Home() {
   const handleWizardCreated = (created: StudentProfile) => {
     setProfiles((prev) => [created, ...prev]);
     setActiveProfile(created);
+    rememberProfile(created.id);
     try {
       localStorage.setItem("scholarbridge_active_profile", String(created.id));
     } catch {
@@ -354,6 +399,7 @@ export default function Home() {
       prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
     );
     setActiveProfile((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    rememberProfile(updated.id);
     try {
       localStorage.setItem("scholarbridge_onboarded", "1");
       localStorage.setItem("scholarbridge_active_profile", String(updated.id));
@@ -376,7 +422,7 @@ export default function Home() {
   if (view === "landing") {
     return (
       <LocaleProvider>
-        <LandingPage onStart={startOnboarding} onEnterApp={enterApp} />
+        <LandingPage onStart={startOnboarding} onEnterApp={enterApp} onSignIn={openProfilePicker} />
       </LocaleProvider>
     );
   }
@@ -550,14 +596,16 @@ export default function Home() {
         onSave={handleSaveProfile}
       />
 
-      {/* Profile picker — the only place the full list is shown (admin sign-in) */}
+      {/* Profile picker — only THIS device's accounts + admin sign-in */}
       <ProfilePicker
+        key={isPickerOpen ? "open" : "closed"}
         open={isPickerOpen}
-        profiles={profiles}
+        deviceProfiles={deviceProfiles}
         currentId={activeProfile?.id ?? null}
         onClose={() => setIsPickerOpen(false)}
         onSelect={handlePickProfile}
         onAddNew={handleAddNewFromPicker}
+        onAdminLogin={handleAdminLogin}
       />
       </div>
     </LocaleProvider>
