@@ -18,10 +18,15 @@ import { AdminPanel } from "@/components/AdminPanel";
 import { PremiumGate } from "@/components/PremiumGate";
 import { FaqSection } from "@/components/FaqSection";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { LandingPage } from "@/components/LandingPage";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("dashboard");
+  // "landing" = first-time visitor (English welcome page),
+  // "wizard"  = step-by-step onboarding for a brand-new user,
+  // "app"     = the main app (sidebar navigation).
+  const [view, setView] = useState<"landing" | "wizard" | "app">("landing");
 
   // Profile management
   const [profiles, setProfiles] = useState<StudentProfile[]>([]);
@@ -36,6 +41,15 @@ export default function Home() {
 
   useEffect(() => {
     fetchProfiles();
+    // Returning visitor (this browser already finished onboarding) goes
+    // straight into the app; everyone else sees the English landing page.
+    try {
+      if (localStorage.getItem("scholarbridge_onboarded") === "1") {
+        setView("app");
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   // Referral system: capture ?ref=CODE from the URL and keep it for up to
@@ -88,7 +102,16 @@ export default function Home() {
       const data = await res.json();
       if (data.profiles && data.profiles.length > 0) {
         setProfiles(data.profiles);
-        setActiveProfile(data.profiles[0]);
+        // Prefer the profile this browser last used, else the first one.
+        let chosen = data.profiles[0];
+        try {
+          const lastId = Number(localStorage.getItem("scholarbridge_active_profile"));
+          const match = data.profiles.find((p: StudentProfile) => p.id === lastId);
+          if (match) chosen = match;
+        } catch {
+          // ignore
+        }
+        setActiveProfile(chosen);
       }
     } catch (err) {
       console.error("Error fetching profiles:", err);
@@ -280,9 +303,62 @@ export default function Home() {
     }
   };
 
+  // ---- Landing / onboarding flow ----
+  const handleWizardCreated = (created: StudentProfile) => {
+    setProfiles((prev) => [created, ...prev]);
+    setActiveProfile(created);
+    try {
+      localStorage.setItem("scholarbridge_active_profile", String(created.id));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleWizardComplete = (updated: StudentProfile) => {
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+    );
+    setActiveProfile((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    try {
+      localStorage.setItem("scholarbridge_onboarded", "1");
+      localStorage.setItem("scholarbridge_active_profile", String(updated.id));
+    } catch {
+      // ignore
+    }
+    setView("app");
+    setActiveTab("dashboard");
+  };
+
+  const startOnboarding = () => setView("wizard");
+
+  // ---- First visit: English landing page ----
+  if (view === "landing") {
+    return (
+      <LocaleProvider>
+        <LandingPage onStart={startOnboarding} />
+      </LocaleProvider>
+    );
+  }
+
+  // ---- Brand-new user: step-by-step onboarding (creates the profile on
+  // step 1, then saves every step; resumes where the user left off) ----
+  if (view === "wizard") {
+    return (
+      <LocaleProvider>
+        <div className="min-h-screen bg-slate-100 py-10 px-4">
+          <OnboardingWizard
+            profile={null}
+            onCreated={handleWizardCreated}
+            onComplete={handleWizardComplete}
+          />
+        </div>
+      </LocaleProvider>
+    );
+  }
+
   return (
     <LocaleProvider>
-      <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+      <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row font-sans">
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -293,22 +369,18 @@ export default function Home() {
           setIsNewProfile(!!isNew);
           setIsProfileModalOpen(true);
         }}
+        onStartOnboarding={startOnboarding}
         onLocaleChange={handleLocaleChange}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Onboarding wizard — shown for new profiles that haven't completed
+      <div className="flex-1 min-w-0 flex flex-col">
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6">
+        {/* Onboarding wizard — shown for profiles that haven't completed
             the step-by-step setup yet. Resumes from the saved step. */}
         {activeProfile && !activeProfile.onboardingCompleted ? (
           <OnboardingWizard
             profile={activeProfile}
-            onComplete={(updated) => {
-              setProfiles((prev) =>
-                prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
-              );
-              setActiveProfile((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
-              setActiveTab("dashboard");
-            }}
+            onComplete={handleWizardComplete}
           />
         ) : activeTab === "dashboard" && (
           <DashboardView
@@ -427,6 +499,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
+      </div>
 
       {/* Profile Create / Edit Modal */}
       <ProfileModal

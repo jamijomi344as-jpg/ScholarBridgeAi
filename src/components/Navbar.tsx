@@ -16,7 +16,8 @@ import {
   Video,
   Crown,
   Gift,
-  Trophy
+  Trophy,
+  ChevronDown,
 } from "lucide-react";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
@@ -59,6 +60,7 @@ interface NavbarProps {
   activeProfile: StudentProfile | null;
   setActiveProfile: (profile: StudentProfile) => void;
   onOpenProfileModal: (isNew?: boolean) => void;
+  onStartOnboarding?: () => void;
   onLocaleChange?: (locale: string) => void;
 }
 
@@ -69,6 +71,7 @@ export function Navbar({
   activeProfile,
   setActiveProfile,
   onOpenProfileModal,
+  onStartOnboarding,
   onLocaleChange,
 }: NavbarProps) {
   const navItems = [
@@ -91,106 +94,161 @@ export function Navbar({
     ? [...navItems, { id: "admin", label: "Admin Panel", icon: Crown }]
     : navItems;
 
+  const Logo = (
+    <div className="flex items-center gap-2.5">
+      <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-md shadow-indigo-200 border border-slate-200 shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
+          alt="ScholarBridge Logo"
+          className="h-9 w-9 object-cover"
+        />
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="font-bold text-lg tracking-tight text-slate-900 truncate">ScholarBridge</span>
+          <span className="hidden xl:inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+            <Sparkles className="h-2.5 w-2.5 text-indigo-600" /> Gemini AI
+          </span>
+        </div>
+        <p className="text-[10px] text-slate-500 truncate hidden sm:block">Global Admissions & Scholarship Discovery</p>
+      </div>
+    </div>
+  );
+
+  const ProfileSwitcher = (
+    <div className="relative flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 min-w-0">
+      <User className="h-4 w-4 text-slate-500 ml-2 shrink-0" />
+      <select
+        value={activeProfile?.id || ""}
+        onChange={(e) => {
+          const p = profiles.find((item) => item.id === Number(e.target.value));
+          if (p) setActiveProfile(p);
+        }}
+        className="bg-transparent text-xs font-semibold text-slate-800 py-1 pl-1 pr-5 focus:outline-none cursor-pointer w-full truncate"
+        title="Switch active profile"
+      >
+        {profiles.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name} ({p.targetMajor})
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="h-3 w-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+    </div>
+  );
+
+  const renderNav = (vertical: boolean) => (
+    <>
+      {displayItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = activeTab === item.id;
+        const premium = (item as { premium?: boolean }).premium;
+        const isAdminTab = item.id === "admin";
+        const activeCls = isActive
+          ? premium
+            ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-900 shadow-xs font-bold"
+            : isAdminTab
+            ? "bg-slate-900 text-white shadow-xs font-bold"
+            : "bg-indigo-600 text-white shadow-xs font-semibold"
+          : premium
+          ? "text-amber-700 hover:bg-amber-50 hover:text-amber-800 border border-amber-200"
+          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100";
+        return (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            title={item.label}
+            className={`flex items-center gap-2.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150 ${
+              vertical
+                ? "w-full px-3 py-2.5 text-left"
+                : "px-3 py-2"
+            } ${activeCls}`}
+          >
+            <Icon className={`h-4 w-4 shrink-0 ${isActive ? "" : premium ? "text-amber-500" : "text-slate-500"}`} />
+            <span className={vertical ? "flex-1 truncate" : ""}>{item.label}</span>
+            {premium && !isActive && (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                Pro
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
+
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo & Brand */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("dashboard")}>
-            <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-md shadow-indigo-200 border border-slate-200">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
-                alt="ScholarBridge Logo"
-                className="h-10 w-10 object-cover"
-              />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-xl tracking-tight text-slate-900">ScholarBridge</span>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  <Sparkles className="h-3 w-3 text-indigo-600" />
-                  Gemini AI
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 hidden md:block">Global Admissions & Scholarship Discovery</p>
-            </div>
-          </div>
+    <>
+      {/* ================= DESKTOP: LEFT SIDEBAR ================= */}
+      <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-slate-200 sticky top-0 h-screen z-40">
+        {/* Logo */}
+        <div
+          className="px-5 py-5 border-b border-slate-100 cursor-pointer"
+          onClick={() => setActiveTab("dashboard")}
+        >
+          {Logo}
+        </div>
 
-          {/* Language switcher, Active Profile Switcher & Edit */}
-          <div className="flex items-center gap-2">
-            <LanguageSwitcher onLocaleChange={onLocaleChange} />
-            <div className="relative flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
-              <User className="h-4 w-4 text-slate-500 ml-2" />
-              <select
-                value={activeProfile?.id || ""}
-                onChange={(e) => {
-                  const p = profiles.find((item) => item.id === Number(e.target.value));
-                  if (p) setActiveProfile(p);
-                }}
-                className="bg-transparent text-xs sm:text-sm font-semibold text-slate-800 py-1 pl-1 pr-6 focus:outline-none cursor-pointer"
-              >
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.targetMajor})
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1 no-scrollbar">
+          {renderNav(true)}
+        </nav>
 
+        {/* Bottom: profile switcher + actions */}
+        <div className="px-4 py-4 border-t border-slate-100 space-y-2.5">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1">Student profile</p>
+          {ProfileSwitcher}
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => onOpenProfileModal(false)}
-              className="text-xs font-medium text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition-colors"
-              title="Edit Active Profile"
+              className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-2 rounded-lg border border-indigo-200 transition-colors"
             >
               Edit Profile
             </button>
-
             <button
-              onClick={() => onOpenProfileModal(true)}
-              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
+              onClick={onStartOnboarding ?? (() => onOpenProfileModal(true))}
+              className="flex items-center justify-center gap-1 text-[11px] font-bold text-slate-600 hover:text-indigo-600 bg-slate-50 hover:bg-slate-100 px-2.5 py-2 rounded-lg border border-slate-200 transition-colors"
               title="Add New Profile"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3 w-3" /> Add New
             </button>
           </div>
+          <div className="pt-1">
+            <LanguageSwitcher onLocaleChange={onLocaleChange} />
+          </div>
         </div>
+      </aside>
 
-        {/* Navigation Tabs */}
-        <div className="flex overflow-x-auto space-x-1 sm:space-x-2 py-2 no-scrollbar border-t border-slate-100">
-          {displayItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            // Premium items are styled gold; admin is dark; others default indigo.
-            const premium = (item as { premium?: boolean }).premium;
-            const isAdminTab = item.id === "admin";
-            const activeCls = isActive
-              ? premium
-                ? "bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-900 shadow-xs font-bold"
-                : isAdminTab
-                ? "bg-slate-900 text-white shadow-xs font-bold"
-                : "bg-indigo-600 text-white shadow-xs font-semibold"
-              : premium
-              ? "text-amber-700 hover:bg-amber-50 hover:text-amber-800 border border-amber-200"
-              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100";
-            return (
+      {/* ================= MOBILE: TOP HEADER + HORIZONTAL TABS ================= */}
+      <header className="lg:hidden sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs">
+        <div className="px-4">
+          <div className="flex items-center justify-between h-14 gap-2">
+            {Logo}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="max-w-[160px]">{ProfileSwitcher}</div>
               <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all duration-150 ${activeCls}`}
+                onClick={() => onOpenProfileModal(false)}
+                className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1.5 rounded-lg border border-indigo-200 shrink-0"
               >
-                <Icon className={`h-4 w-4 ${isActive ? "" : premium ? "text-amber-500" : "text-slate-500"}`} />
-                {item.label}
-                {premium && !isActive && (
-                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                    Pro
-                  </span>
-                )}
+                Edit
               </button>
-            );
-          })}
+              <button
+                onClick={onStartOnboarding ?? (() => onOpenProfileModal(true))}
+                className="p-1.5 text-slate-600 hover:text-indigo-600 bg-slate-100 rounded-lg shrink-0"
+                title="Add New Profile"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+              <LanguageSwitcher onLocaleChange={onLocaleChange} />
+            </div>
+          </div>
         </div>
-      </div>
-    </header>
+        {/* Navigation Tabs (horizontal scroll) */}
+        <div className="flex overflow-x-auto space-x-1 sm:space-x-2 py-2 px-4 no-scrollbar border-t border-slate-100">
+          {renderNav(false)}
+        </div>
+      </header>
+    </>
   );
 }

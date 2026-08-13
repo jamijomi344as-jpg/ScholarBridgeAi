@@ -19,9 +19,14 @@ import {
 import { StudentProfile } from "./Navbar";
 
 interface OnboardingWizardProps {
-  profile: StudentProfile;
+  /**
+   * Existing profile (resume mode) OR null for a brand-new visitor:
+   * in that case step 1 (name + email) creates the profile via POST /api/profiles,
+   * and every following step saves through PUT /api/profiles/:id.
+   */
+  profile: StudentProfile | null;
+  onCreated?: (profile: StudentProfile) => void;
   onComplete: (updated: StudentProfile) => void;
-  onClose?: () => void;
 }
 
 interface FormState {
@@ -63,51 +68,74 @@ const COUNTRIES = [
 const DEGREES = ["Bachelor", "Master", "PhD"];
 
 const STEPS = [
-  { id: 0, title: "Ism va email", icon: User },
-  { id: 1, title: "Maqsad daraja", icon: GraduationCap },
-  { id: 2, title: "Yo'nalish", icon: Compass },
-  { id: 3, title: "Akademik ko'rsatkich", icon: BookOpen },
-  { id: 4, title: "Standart testlar", icon: FileCheck },
-  { id: 5, title: "Byudjet va moliyaviy yordam", icon: Wallet },
-  { id: 6, title: "Tanlangan davlatlar", icon: Globe2 },
-  { id: 7, title: "Tajriba va yutuqlar", icon: Trophy },
+  { id: 0, title: "Name & Email", icon: User },
+  { id: 1, title: "Target Degree", icon: GraduationCap },
+  { id: 2, title: "Target Major", icon: Compass },
+  { id: 3, title: "Academic Performance", icon: BookOpen },
+  { id: 4, title: "Standard Tests", icon: FileCheck },
+  { id: 5, title: "Budget & Financial Aid", icon: Wallet },
+  { id: 6, title: "Preferred Countries", icon: Globe2 },
+  { id: 7, title: "Experience & Achievements", icon: Trophy },
 ];
 
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5";
 
-export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWizardProps) {
+export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingWizardProps) {
   // Resume: continue from the saved step (0-based), defaulting to step 0.
-  const startStep = Math.min(Math.max(profile.onboardingStep ?? 0, 0), 7);
+  const startStep = profile
+    ? Math.min(Math.max(profile.onboardingStep ?? 0, 0), 7)
+    : 0;
 
   const [step, setStep] = useState<number>(startStep);
+  const [createdId, setCreatedId] = useState<number | null>(profile?.id ?? null);
   const [saving, setSaving] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState<FormState>({
-    name: profile.name || "",
-    email: profile.email || "",
-    degreeLevel: profile.degreeLevel || "",
-    targetMajor: profile.targetMajor === "Computer Science" ? "" : profile.targetMajor || "",
-    gpa: profile.gpa ? String(profile.gpa) : "",
-    gpaScale: profile.gpaScale ? String(profile.gpaScale) : "",
-    ieltsScore: profile.ieltsScore ? String(profile.ieltsScore) : "",
-    toeflScore: profile.toeflScore ? String(profile.toeflScore) : "",
-    satScore: profile.satScore ? String(profile.satScore) : "",
-    greScore: profile.greScore ? String(profile.greScore) : "",
-    budgetAnnualUsd: profile.budgetAnnualUsd ? String(profile.budgetAnnualUsd) : "",
-    needScholarship: profile.needScholarship ?? true,
-    preferredCountries: safeParseCountries(profile.preferredCountries),
-    workExperienceYears: profile.workExperienceYears != null ? String(profile.workExperienceYears) : "",
-    researchPublications: profile.researchPublications != null ? String(profile.researchPublications) : "",
-    extracurriculars: profile.extracurriculars || "",
+    name: profile?.name || "",
+    email: profile?.email || "",
+    degreeLevel: profile?.degreeLevel || "",
+    targetMajor: profile?.targetMajor === "Computer Science" ? "" : profile?.targetMajor || "",
+    gpa: profile?.gpa ? String(profile.gpa) : "",
+    gpaScale: profile?.gpaScale ? String(profile.gpaScale) : "",
+    ieltsScore: profile?.ieltsScore ? String(profile.ieltsScore) : "",
+    toeflScore: profile?.toeflScore ? String(profile.toeflScore) : "",
+    satScore: profile?.satScore ? String(profile.satScore) : "",
+    greScore: profile?.greScore ? String(profile.greScore) : "",
+    budgetAnnualUsd: profile?.budgetAnnualUsd ? String(profile.budgetAnnualUsd) : "",
+    needScholarship: profile?.needScholarship ?? true,
+    preferredCountries: safeParseCountries(profile?.preferredCountries),
+    workExperienceYears: profile?.workExperienceYears != null ? String(profile.workExperienceYears) : "",
+    researchPublications: profile?.researchPublications != null ? String(profile.researchPublications) : "",
+    extracurriculars: profile?.extracurriculars || "",
   });
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  /** Persist current step's answers + advance the stored step (resume support). */
+  const storedReferralCode = (): string | null => {
+    try {
+      const raw = localStorage.getItem("scholarbridge_ref");
+      if (!raw) return null;
+      const { code, at } = JSON.parse(raw);
+      if (!code || !at || Date.now() - at > 48 * 60 * 60 * 1000) {
+        localStorage.removeItem("scholarbridge_ref");
+        return null;
+      }
+      return code;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Persist the current step. For a brand-new visitor the very first save
+   * creates the profile (POST /api/profiles with name/email + referral code),
+   * afterwards every step uses PUT /api/profiles/:id. Each save advances
+   * onboardingStep so the user can leave and resume later.
+   */
   const persist = async (nextStep: number, completed: boolean) => {
     setSaving(true);
     setError("");
@@ -135,16 +163,33 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
         onboardingCompleted: completed,
       };
 
-      const res = await fetch(`/api/profiles/${profile.id}`, {
+      if (createdId == null) {
+        // Step 1: create the profile (name + email are mandatory here).
+        const res = await fetch("/api/profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, referralCode: storedReferralCode() }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.profile) {
+          throw new Error(data.error || "Could not create profile");
+        }
+        const created = data.profile as StudentProfile;
+        setCreatedId(created.id);
+        onCreated?.(created);
+        return created;
+      }
+
+      const res = await fetch(`/api/profiles/${createdId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Saqlashda xatolik");
+      if (!res.ok || !data.profile) throw new Error(data.error || "Could not save profile");
       return data.profile as StudentProfile;
     } catch (err: any) {
-      setError(err.message || "Saqlashda xatolik yuz berdi");
+      setError(err.message || "Something went wrong while saving");
       return null;
     } finally {
       setSaving(false);
@@ -153,7 +198,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
 
   const handleNext = async () => {
     if (step === 0 && (!form.name.trim() || !form.email.trim())) {
-      setError("Ism va email majburiy maydonlar");
+      setError("Full name and email are required");
       return;
     }
     if (step === STEPS.length - 1) {
@@ -202,16 +247,16 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
           <div className="mx-auto h-20 w-20 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-200">
             <CheckCircle2 className="h-10 w-10 text-white" />
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900">Profilingiz tayyor! 🎉</h2>
+          <h2 className="text-2xl font-extrabold text-slate-900">Your profile is ready! 🎉</h2>
           <p className="text-sm text-slate-500 leading-relaxed">
-            Endi ScholarBridge sizga GPA, IELTS va byudjetingizga mos universitetlar hamda grantlarni
-            taklif qilishi mumkin. Dashboard&apos;ga o&apos;tamizmi?
+            ScholarBridge can now match you with universities and grants that fit
+            your GPA, test scores and budget. Let&apos;s go to your dashboard!
           </p>
           <button
-            onClick={() => onComplete(profile)}
+            onClick={() => onComplete(profile ?? ({} as StudentProfile))}
             className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold rounded-xl shadow-md hover:from-indigo-700 hover:to-violet-700 transition-all"
           >
-            <Sparkles className="h-4 w-4" /> Dashboard&apos;ga o&apos;tish
+            <Sparkles className="h-4 w-4" /> Go to Dashboard
           </button>
         </div>
       </div>
@@ -222,6 +267,8 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
   const StepIcon = stepInfo.icon;
   const progressPct = Math.round((step / (STEPS.length - 1)) * 100);
   const isLast = step === STEPS.length - 1;
+  const nextDisabled =
+    saving || (step === 0 && (!form.name.trim() || !form.email.trim()));
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -229,10 +276,10 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
       <div className="mb-5">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-            Profilni to&apos;ldirish
+            {createdId == null ? "Create your account" : "Complete your profile"}
           </p>
           <p className="text-xs font-extrabold text-indigo-600">
-            {step + 1} / {STEPS.length}
+            Step {step + 1} / {STEPS.length}
           </p>
         </div>
         <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
@@ -266,7 +313,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
               <label className={labelCls}>Full Name *</label>
               <input
                 className={inputCls}
-                placeholder="Aliyev Aziz"
+                placeholder="e.g. Aziz Aliyev"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
               />
@@ -282,7 +329,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
               />
             </div>
             <p className="text-[11px] text-slate-400">
-              Bu ma&apos;lumotlar keyinchalik &quot;Edit Academic Profile&quot; orqali o&apos;zgartirilishi mumkin.
+              You can update these later anytime from &quot;Edit Profile&quot;.
             </p>
           </div>
         )}
@@ -312,12 +359,12 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
           <div>
             <input
               className={inputCls}
-              placeholder="Masalan: Data Science & AI, Business Administration, Mechanical Engineering…"
+              placeholder="e.g. Data Science & AI, Business Administration, Mechanical Engineering…"
               value={form.targetMajor}
               onChange={(e) => set("targetMajor", e.target.value)}
             />
             <p className="text-[11px] text-slate-400 mt-2">
-              Aniq yo&apos;nalish tanlash mos universitet va grantlarni topishni osonlashtiradi.
+              A clear major helps us find universities and grants that fit you.
             </p>
           </div>
         )}
@@ -345,9 +392,9 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
                 value={form.gpaScale}
                 onChange={(e) => set("gpaScale", e.target.value)}
               >
-                <option value="4.0">4.0 tizimi</option>
-                <option value="5.0">5.0 tizimi</option>
-                <option value="10.0">10.0 tizimi</option>
+                <option value="4.0">4.0 scale</option>
+                <option value="5.0">5.0 scale</option>
+                <option value="10.0">10.0 scale</option>
               </select>
             </div>
           </div>
@@ -433,7 +480,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-sm font-semibold text-slate-700">
-                Menga to&apos;liq/yoki qisman grant (scholarship) kerak
+                I need a full / partial scholarship
               </span>
             </label>
           </div>
@@ -472,13 +519,13 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
                 value={form.workExperienceYears}
                 onChange={(e) => set("workExperienceYears", e.target.value)}
               >
-                <option value="">Tanlang…</option>
-                <option value="0">0 yil</option>
-                <option value="1">1 yil</option>
-                <option value="2">2 yil</option>
-                <option value="3">3 yil</option>
-                <option value="4">4 yil</option>
-                <option value="5">5+ yil</option>
+                <option value="">Select…</option>
+                <option value="0">0 years</option>
+                <option value="1">1 year</option>
+                <option value="2">2 years</option>
+                <option value="3">3 years</option>
+                <option value="4">4 years</option>
+                <option value="5">5+ years</option>
               </select>
             </div>
             <div>
@@ -497,7 +544,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
               <textarea
                 rows={3}
                 className={inputCls}
-                placeholder="Hackathon g'olibi, fan olimpiadasi, volontyorlik, klub rahbari…"
+                placeholder="Hackathon winner, olympiad medals, volunteering, club leadership…"
                 value={form.extracurriculars}
                 onChange={(e) => set("extracurriculars", e.target.value)}
               />
@@ -513,7 +560,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
             disabled={step === 0}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> Orqaga
+            <ArrowLeft className="h-3.5 w-3.5" /> Back
           </button>
 
           {step !== 0 && (
@@ -523,17 +570,17 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
               disabled={saving}
               className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-400 hover:text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
-              <SkipForward className="h-3.5 w-3.5" /> O&apos;tkazib yuborish
+              <SkipForward className="h-3.5 w-3.5" /> Skip
             </button>
           )}
 
           <button
             type="button"
             onClick={handleNext}
-            disabled={saving || (step === 0 && (!form.name.trim() || !form.email.trim()))}
+            disabled={nextDisabled}
             className="ml-auto flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {saving ? "Saqlanmoqda…" : isLast ? "Tugatish" : "Davom etish"}
+            {saving ? "Saving…" : isLast ? "Finish" : "Continue"}
             {!saving && <ArrowRight className="h-3.5 w-3.5" />}
           </button>
         </div>
@@ -542,7 +589,7 @@ export function OnboardingWizard({ profile, onComplete, onClose }: OnboardingWiz
   );
 }
 
-function safeParseCountries(value?: string): string[] {
+function safeParseCountries(value?: string | null): string[] {
   try {
     const parsed = value ? JSON.parse(value) : [];
     return Array.isArray(parsed) ? parsed : [];
