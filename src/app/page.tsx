@@ -39,19 +39,6 @@ export default function Home() {
   const [savedScholarships, setSavedScholarships] = useState<SavedScholarshipItem[]>([]);
   const [taskCount, setTaskCount] = useState(0);
 
-  useEffect(() => {
-    fetchProfiles();
-    // Returning visitor (this browser already finished onboarding) goes
-    // straight into the app; everyone else sees the English landing page.
-    try {
-      if (localStorage.getItem("scholarbridge_onboarded") === "1") {
-        setView("app");
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
   // Referral system: capture ?ref=CODE from the URL and keep it for up to
   // 48h so a visitor who browses first and registers later is still credited.
   useEffect(() => {
@@ -117,6 +104,20 @@ export default function Home() {
       console.error("Error fetching profiles:", err);
     }
   };
+
+  useEffect(() => {
+    fetchProfiles();
+    // Returning visitor (this browser already finished onboarding) goes
+    // straight into the app; everyone else sees the English landing page.
+    try {
+      if (localStorage.getItem("scholarbridge_onboarded") === "1") {
+        setView("app");
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchSavedUniversities = async (profileId: number) => {
     try {
@@ -331,11 +332,21 @@ export default function Home() {
 
   const startOnboarding = () => setView("wizard");
 
+  // Existing users can skip the landing page and go straight into the app.
+  const enterApp = () => {
+    try {
+      localStorage.setItem("scholarbridge_onboarded", "1");
+    } catch {
+      // ignore
+    }
+    setView("app");
+  };
+
   // ---- First visit: English landing page ----
   if (view === "landing") {
     return (
       <LocaleProvider>
-        <LandingPage onStart={startOnboarding} />
+        <LandingPage onStart={startOnboarding} onEnterApp={profiles.length > 0 ? enterApp : undefined} />
       </LocaleProvider>
     );
   }

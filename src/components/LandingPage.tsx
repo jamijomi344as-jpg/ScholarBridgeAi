@@ -17,6 +17,7 @@ import {
 
 interface LandingPageProps {
   onStart: () => void;
+  onEnterApp?: () => void;
 }
 
 /**
@@ -24,7 +25,7 @@ interface LandingPageProps {
  * organic search). Explains what ScholarBridge does, then "Start for free"
  * launches the step-by-step onboarding wizard.
  */
-export function LandingPage({ onStart }: LandingPageProps) {
+export function LandingPage({ onStart, onEnterApp }: LandingPageProps) {
   const features = [
     {
       icon: Search,
@@ -123,6 +124,14 @@ export function LandingPage({ onStart }: LandingPageProps) {
               <CheckCircle2 className="h-4 w-4 text-emerald-300" /> Built for international students
             </span>
           </div>
+          {onEnterApp && (
+            <button
+              onClick={onEnterApp}
+              className="mt-6 text-xs font-semibold text-indigo-200 underline-offset-4 hover:text-white hover:underline transition-colors"
+            >
+              Already have a profile? Enter the app →
+            </button>
+          )}
         </div>
       </section>
 
