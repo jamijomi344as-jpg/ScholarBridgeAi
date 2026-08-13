@@ -110,7 +110,7 @@ export function AiSopStudio({ activeProfile }: AiSopStudioProps) {
             <Sparkles className="h-3.5 w-3.5" />
             Gemini AI SOP & Application Essay Suite
           </div>
-          <h2 className="text-xl font-bold text-slate-900">Statement of Purpose & Essay Studio</h2>
+          <h1 className="text-xl font-bold text-slate-900">Statement of Purpose & Essay Studio</h1>
           <p className="text-xs text-slate-500 mt-1">
             Generate tailored SOP drafts or evaluate existing essays against elite admissions committee standards.
           </p>

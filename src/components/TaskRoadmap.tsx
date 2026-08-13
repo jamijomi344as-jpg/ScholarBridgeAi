@@ -132,10 +132,10 @@ export function TaskRoadmap({ activeProfile }: TaskRoadmapProps) {
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <CheckSquare className="h-5 w-5 text-indigo-600" />
               Application Milestones & Roadmap
-            </h2>
+            </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Structured to-do list for standardized tests, document translation, LORs, and visa appointments.
             </p>

@@ -128,10 +128,10 @@ export function UniversityExplorer({
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Search className="h-5 w-5 text-indigo-600" />
               Global University & Program Explorer
-            </h2>
+            </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Filtered by match criteria against {activeProfile?.name || "active student profile"}.
             </p>
@@ -259,7 +259,9 @@ export function UniversityExplorer({
                 <div className="relative h-40 w-full overflow-hidden bg-slate-100">
                   <img
                     src={uni.imageUrl}
-                    alt={uni.name}
+                    alt={`${uni.name} — ${uni.city}, ${uni.country}`}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />

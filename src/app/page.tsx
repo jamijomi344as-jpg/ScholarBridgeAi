@@ -16,6 +16,7 @@ import { PaymentsSection } from "@/components/PaymentsSection";
 import { RewardsSection } from "@/components/RewardsSection";
 import { AdminPanel } from "@/components/AdminPanel";
 import { PremiumGate } from "@/components/PremiumGate";
+import { FaqSection } from "@/components/FaqSection";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export default function Home() {
@@ -351,6 +352,9 @@ export default function Home() {
         {activeTab === "rewards" && <RewardsSection activeProfile={activeProfile} />}
 
         {activeTab === "admin" && <AdminPanel activeProfile={activeProfile} />}
+
+        {/* SEO/AEO: FAQ har bir bo'limda sahifa pastida ko'rinadi */}
+        <FaqSection />
       </main>
 
       {/* Footer */}

@@ -49,7 +49,7 @@ export function CourseCatalog({ courses, onOpen }: CourseCatalogProps) {
             <div className="relative h-40 bg-gradient-to-br from-indigo-500 via-blue-600 to-violet-600">
               {course.thumbnailUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+                <img src={course.thumbnailUrl} alt={course.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <BookOpen className="h-12 w-12 text-white/60" />

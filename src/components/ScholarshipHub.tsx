@@ -98,10 +98,10 @@ export function ScholarshipHub({
       {/* Top Banner / Filter */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Award className="h-5 w-5 text-amber-500" />
             Global Financial Aid & Scholarship Discovery Engine
-          </h2>
+          </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Discover fully-funded government awards, university merit grants, and need-based financial aid.
           </p>

@@ -107,12 +107,12 @@ How can I help you today? Ask me about **work visas (OPT/PGWP/Graduate Route)**,
             <Bot className="h-6 w-6 text-amber-300" />
           </div>
           <div>
-            <h2 className="font-bold text-base flex items-center gap-2">
+            <h1 className="font-bold text-base flex items-center gap-2">
               ScholarBridge AI Counselor
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-semibold">
                 Online
               </span>
-            </h2>
+            </h1>
             <p className="text-xs text-slate-300">
               Personalized for {activeProfile?.name} • {activeProfile?.targetMajor}
             </p>

@@ -93,7 +93,15 @@ export function ApplicationTracker({
   return (
     <div className="space-y-6">
       {/* Sub Tab Picker */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-lg sm:text-xl font-extrabold text-slate-900">
+            My Applications
+          </h1>
+          <p className="text-xs text-slate-500 hidden md:block">
+            Track stage milestones & notes for {activeProfile?.name}
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveTab("universities")}
@@ -119,10 +127,6 @@ export function ApplicationTracker({
             Scholarship Applications ({savedScholarships.length})
           </button>
         </div>
-
-        <p className="text-xs text-slate-500 hidden md:block">
-          Track stage milestones & notes for {activeProfile?.name}
-        </p>
       </div>
 
       {/* Universities Tracker */}
