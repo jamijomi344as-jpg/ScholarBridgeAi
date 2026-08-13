@@ -33,6 +33,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (profile && !isNew) {
@@ -87,6 +88,11 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
     }
   }, [profile, isNew, isOpen]);
 
+  // Clear any previous error each time the modal opens.
+  useEffect(() => {
+    if (isOpen) setErrorMsg("");
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const countryOptions = [
@@ -123,14 +129,16 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMsg("");
     try {
       await onSave({
         ...formData,
         preferredCountries: JSON.stringify(formData.preferredCountries),
       });
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setErrorMsg(err?.message || "Saqlashda xatolik yuz berdi. Qayta urinib ko'ring.");
     } finally {
       setIsSubmitting(false);
     }
@@ -157,6 +165,11 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          {errorMsg && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+              {errorMsg}
+            </div>
+          )}
           {/* Basic Info */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">

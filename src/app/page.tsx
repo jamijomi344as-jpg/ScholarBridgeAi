@@ -133,35 +133,35 @@ export default function Home() {
   };
 
   const handleSaveProfile = async (formData: Partial<StudentProfile>) => {
-    try {
-      if (isNewProfile) {
-        const res = await fetch("/api/profiles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...formData,
-            referralCode: getStoredReferralCode(),
-          }),
-        });
-        const data = await res.json();
-        if (data.profile) {
-          setProfiles((prev) => [data.profile, ...prev]);
-          setActiveProfile(data.profile);
-        }
-      } else if (activeProfile) {
-        const res = await fetch(`/api/profiles/${activeProfile.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        });
-        const data = await res.json();
-        if (data.profile) {
-          setProfiles((prev) => prev.map((p) => (p.id === data.profile.id ? data.profile : p)));
-          setActiveProfile(data.profile);
-        }
+    // NOTE: errors are intentionally NOT swallowed here — they propagate to
+    // ProfileModal so the user sees a clear message instead of a silent fail.
+    if (isNewProfile) {
+      const res = await fetch("/api/profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          referralCode: getStoredReferralCode(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.profile) {
+        throw new Error(data.error || "Profil yaratib bo'lmadi");
       }
-    } catch (err) {
-      console.error("Error saving profile:", err);
+      setProfiles((prev) => [data.profile, ...prev]);
+      setActiveProfile(data.profile);
+    } else if (activeProfile) {
+      const res = await fetch(`/api/profiles/${activeProfile.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.profile) {
+        throw new Error(data.error || "Profil yangilanmadi");
+      }
+      setProfiles((prev) => prev.map((p) => (p.id === data.profile.id ? data.profile : p)));
+      setActiveProfile(data.profile);
     }
   };
 

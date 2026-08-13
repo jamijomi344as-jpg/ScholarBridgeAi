@@ -5,6 +5,17 @@ import { seedDatabase } from "@/db/seed";
 import { awardPoints } from "@/lib/gamification";
 import { ensureReferralCode, applyReferralCodeToProfile } from "@/lib/referrals";
 
+/** Detect a schema-mismatch error (new columns missing in the database). */
+function isMissingColumnsError(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err);
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("column") ||
+    msg.includes("referral_code") ||
+    msg.includes("onboarding_step")
+  );
+}
+
 export async function GET() {
   try {
     await seedDatabase();
@@ -12,6 +23,15 @@ export async function GET() {
     return NextResponse.json({ profiles });
   } catch (error) {
     console.error("GET /api/profiles error:", error);
+    if (isMissingColumnsError(error)) {
+      return NextResponse.json(
+        {
+          error:
+            "Database schema is out of date. Please run `npm run db:push` (or redeploy — Render runs it automatically) to add the new columns.",
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ error: "Failed to fetch student profiles" }, { status: 500 });
   }
 }
@@ -74,6 +94,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ profile: newProfile });
   } catch (error) {
     console.error("POST /api/profiles error:", error);
+    if (isMissingColumnsError(error)) {
+      return NextResponse.json(
+        {
+          error:
+            "Database schema is out of date. Please run `npm run db:push` (or redeploy — Render runs it automatically) to add the new columns.",
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ error: "Failed to create student profile" }, { status: 500 });
   }
 }

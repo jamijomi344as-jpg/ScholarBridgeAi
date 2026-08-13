@@ -54,9 +54,12 @@ export async function seedDatabase() {
     }
 
     // Referral & onboarding backfill (idempotent, runs on every load):
-    //  - every existing profile gets a unique referral code if missing
-    //  - profiles created before the onboarding wizard existed are marked
-    //    as onboarding_completed so the wizard doesn't hijack them
+    //  - every EXISTING profile (created before the referral columns existed)
+    //    gets a unique referral code if missing, and is treated as already
+    //    onboarded so the wizard doesn't hijack old users.
+    //  - NEW profiles are created with a referral code via the API (their
+    //    onboardingStep stays 0 / onboardingCompleted false), so they are
+    //    NOT touched here and the step-by-step wizard shows for them.
     try {
       const allProfiles = await db.select().from(studentProfiles);
       for (const p of allProfiles) {
@@ -67,12 +70,14 @@ export async function seedDatabase() {
             if (clash.length === 0) break;
             code = makeReferralCode();
           }
-          await db.update(studentProfiles).set({ referralCode: code }).where(eq(studentProfiles.id, p.id));
-        }
-        if (p.onboardingStep === 0 && !p.onboardingCompleted) {
           await db
             .update(studentProfiles)
-            .set({ onboardingCompleted: true, onboardingStep: 8 })
+            .set({
+              referralCode: code,
+              // Legacy profile (pre-wizard): mark it as already onboarded.
+              onboardingCompleted: true,
+              onboardingStep: 8,
+            })
             .where(eq(studentProfiles.id, p.id));
         }
       }
