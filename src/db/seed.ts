@@ -18,6 +18,16 @@ import {
 } from "./schema";
 import { eq } from "drizzle-orm";
 
+/** Local 8-char referral code generator (avoids importing gamification here). */
+function makeReferralCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
 export async function seedDatabase() {
   try {
     // Ensure there is always at least one admin profile so the Admin Panel
@@ -41,6 +51,33 @@ export async function seedDatabase() {
           .where(eq(studentProfiles.id, firstProfile.id));
         console.log("Promoted profile", firstProfile.id, "to admin (no admin existed).");
       }
+    }
+
+    // Referral & onboarding backfill (idempotent, runs on every load):
+    //  - every existing profile gets a unique referral code if missing
+    //  - profiles created before the onboarding wizard existed are marked
+    //    as onboarding_completed so the wizard doesn't hijack them
+    try {
+      const allProfiles = await db.select().from(studentProfiles);
+      for (const p of allProfiles) {
+        if (!p.referralCode) {
+          let code = makeReferralCode();
+          for (let i = 0; i < 5; i++) {
+            const clash = await db.select().from(studentProfiles).where(eq(studentProfiles.referralCode, code));
+            if (clash.length === 0) break;
+            code = makeReferralCode();
+          }
+          await db.update(studentProfiles).set({ referralCode: code }).where(eq(studentProfiles.id, p.id));
+        }
+        if (p.onboardingStep === 0 && !p.onboardingCompleted) {
+          await db
+            .update(studentProfiles)
+            .set({ onboardingCompleted: true, onboardingStep: 8 })
+            .where(eq(studentProfiles.id, p.id));
+        }
+      }
+    } catch (err) {
+      console.error("Referral/onboarding backfill failed:", err);
     }
 
     // Check if universities already seeded

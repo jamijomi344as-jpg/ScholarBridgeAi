@@ -20,6 +20,17 @@ export const studentProfiles = pgTable("student_profiles", {
   researchPublications: integer("research_publications").default(0),
   preferredLocale: text("preferred_locale").notNull().default("en"),
   isAdmin: boolean("is_admin").notNull().default(false),
+  // --- Referral system ---
+  referralCode: text("referral_code").unique(),
+  referredBy: integer("referred_by").references((): AnyPgColumn => studentProfiles.id, { onDelete: "set null" }),
+  referralPoints: integer("referral_points").notNull().default(0),
+  referralRewarded: boolean("referral_rewarded").notNull().default(false),
+  // --- Referral-gifted premium (stackable 30-day grants) ---
+  isPremium: boolean("is_premium").notNull().default(false),
+  premiumUntil: timestamp("premium_until"),
+  // --- Onboarding wizard progress ---
+  onboardingStep: integer("onboarding_step").notNull().default(0),
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

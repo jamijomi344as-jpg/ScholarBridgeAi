@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { studentProfiles } from "@/db/schema";
 import { seedDatabase } from "@/db/seed";
 import { awardPoints } from "@/lib/gamification";
+import { ensureReferralCode, applyReferralCodeToProfile } from "@/lib/referrals";
 
 export async function GET() {
   try {
@@ -54,6 +55,20 @@ export async function POST(req: Request) {
       await awardPoints(newProfile.id, 20, "profile_created", newProfile.id);
     } catch (err) {
       console.error("Failed to award welcome points:", err);
+    }
+
+    // Referral system: generate the new profile's own unique code, and if a
+    // ?ref= code was stored (from the signup link) apply it to referred_by.
+    try {
+      await ensureReferralCode(newProfile.id);
+      if (body.referralCode) {
+        const applied = await applyReferralCodeToProfile(newProfile.id, body.referralCode);
+        if (applied.error === "SELF") {
+          console.warn("Self-referral blocked for profile", newProfile.id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to set up referral for new profile:", err);
     }
 
     return NextResponse.json({ profile: newProfile });

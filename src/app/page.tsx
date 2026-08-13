@@ -17,6 +17,7 @@ import { RewardsSection } from "@/components/RewardsSection";
 import { AdminPanel } from "@/components/AdminPanel";
 import { PremiumGate } from "@/components/PremiumGate";
 import { FaqSection } from "@/components/FaqSection";
+import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export default function Home() {
@@ -36,6 +37,42 @@ export default function Home() {
   useEffect(() => {
     fetchProfiles();
   }, []);
+
+  // Referral system: capture ?ref=CODE from the URL and keep it for up to
+  // 48h so a visitor who browses first and registers later is still credited.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref");
+      if (ref && ref.trim()) {
+        localStorage.setItem(
+          "scholarbridge_ref",
+          JSON.stringify({ code: ref.trim().toUpperCase(), at: Date.now() })
+        );
+        // Clean the URL so the code isn't shared accidentally.
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ref");
+        window.history.replaceState({}, "", url.toString());
+      }
+    } catch {
+      // localStorage unavailable — ignore
+    }
+  }, []);
+
+  const getStoredReferralCode = (): string | null => {
+    try {
+      const raw = localStorage.getItem("scholarbridge_ref");
+      if (!raw) return null;
+      const { code, at } = JSON.parse(raw);
+      if (!code || !at || Date.now() - at > 48 * 60 * 60 * 1000) {
+        localStorage.removeItem("scholarbridge_ref");
+        return null;
+      }
+      return code;
+    } catch {
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (activeProfile?.id) {
@@ -101,7 +138,10 @@ export default function Home() {
         const res = await fetch("/api/profiles", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            ...formData,
+            referralCode: getStoredReferralCode(),
+          }),
         });
         const data = await res.json();
         if (data.profile) {
@@ -257,7 +297,20 @@ export default function Home() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === "dashboard" && (
+        {/* Onboarding wizard — shown for new profiles that haven't completed
+            the step-by-step setup yet. Resumes from the saved step. */}
+        {activeProfile && !activeProfile.onboardingCompleted ? (
+          <OnboardingWizard
+            profile={activeProfile}
+            onComplete={(updated) => {
+              setProfiles((prev) =>
+                prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+              );
+              setActiveProfile((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+              setActiveTab("dashboard");
+            }}
+          />
+        ) : activeTab === "dashboard" && (
           <DashboardView
             profile={activeProfile}
             onNavigateTab={setActiveTab}

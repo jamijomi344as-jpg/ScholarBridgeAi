@@ -8,6 +8,7 @@ import { PointsBadge } from "./PointsBadge";
 import { LevelProgressBar } from "./LevelProgressBar";
 import { BadgeShowcase, UserBadge } from "./BadgeShowcase";
 import { ReferralShareCard } from "./ReferralShareCard";
+import { ReferralProgramCard } from "./ReferralProgramCard";
 import { Leaderboard, LeaderboardEntry } from "./Leaderboard";
 
 interface RewardsSectionProps {
@@ -125,6 +126,9 @@ export function RewardsSection({ activeProfile }: RewardsSectionProps) {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          {/* Referral program v2: link, points, progress bar, premium badge,
+              referred users list */}
+          <ReferralProgramCard activeProfile={activeProfile} />
           <BadgeShowcase badges={gamification.badges} />
           <Leaderboard entries={leaderboard} highlightProfileId={activeProfile.id} />
         </div>

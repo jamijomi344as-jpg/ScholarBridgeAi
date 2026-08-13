@@ -40,6 +40,16 @@ export interface StudentProfile {
   researchPublications?: number | null;
   preferredLocale?: string;
   isAdmin?: boolean;
+  // Referral system v2
+  referralCode?: string | null;
+  referredBy?: number | null;
+  referralPoints?: number | null;
+  isPremium?: boolean | null;
+  premiumUntil?: string | null;
+  referralRewarded?: boolean | null;
+  // Onboarding wizard
+  onboardingStep?: number | null;
+  onboardingCompleted?: boolean | null;
 }
 
 interface NavbarProps {

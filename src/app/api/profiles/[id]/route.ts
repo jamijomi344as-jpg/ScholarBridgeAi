@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { studentProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { completeReferralIfDue } from "@/lib/referrals";
+import { completeReferralIfDue, activateReferralReward } from "@/lib/referrals";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,10 +34,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const [updatedProfile] = await db.update(studentProfiles)
       .set({
-        name: body.name,
-        email: body.email,
-        degreeLevel: body.degreeLevel,
-        targetMajor: body.targetMajor,
+        name: body.name ?? undefined,
+        email: body.email ?? undefined,
+        degreeLevel: body.degreeLevel !== undefined ? body.degreeLevel : undefined,
+        targetMajor: body.targetMajor !== undefined ? body.targetMajor : undefined,
         gpa: body.gpa !== undefined ? Number(body.gpa) : undefined,
         gpaScale: body.gpaScale !== undefined ? Number(body.gpaScale) : undefined,
         ieltsScore: body.ieltsScore !== undefined ? (body.ieltsScore === null ? null : Number(body.ieltsScore)) : undefined,
@@ -46,11 +46,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         greScore: body.greScore !== undefined ? (body.greScore === null ? null : Number(body.greScore)) : undefined,
         budgetAnnualUsd: body.budgetAnnualUsd !== undefined ? Number(body.budgetAnnualUsd) : undefined,
         preferredCountries: countriesStr,
-        needScholarship: body.needScholarship,
-        extracurriculars: body.extracurriculars,
+        needScholarship: body.needScholarship !== undefined ? body.needScholarship : undefined,
+        extracurriculars: body.extracurriculars !== undefined ? body.extracurriculars : undefined,
         workExperienceYears: body.workExperienceYears !== undefined ? Number(body.workExperienceYears) : undefined,
         researchPublications: body.researchPublications !== undefined ? Number(body.researchPublications) : undefined,
         preferredLocale: body.preferredLocale !== undefined ? body.preferredLocale : undefined,
+        // Onboarding wizard persistence (resume support)
+        onboardingStep: body.onboardingStep !== undefined ? Number(body.onboardingStep) : undefined,
+        onboardingCompleted: body.onboardingCompleted !== undefined ? !!body.onboardingCompleted : undefined,
         updatedAt: new Date(),
       })
       .where(eq(studentProfiles.id, profileId))
@@ -62,6 +65,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         await completeReferralIfDue(profileId);
       } catch (err) {
         console.error("Failed to complete referral:", err);
+      }
+      // Referral v2: when onboarding is completed, activate the referrer's
+      // reward server-side (idempotent — guarded by referral_rewarded).
+      if (updatedProfile.onboardingCompleted) {
+        try {
+          const reward = await activateReferralReward(profileId);
+          if (reward.ok) {
+            console.log(
+              `Referral activated: profile ${profileId} → referrer +1 point (${reward.points} total${reward.premiumGranted ? ", premium granted" : ""})`
+            );
+          }
+        } catch (err) {
+          console.error("Failed to activate referral reward:", err);
+        }
       }
     }
 
