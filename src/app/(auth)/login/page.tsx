@@ -66,7 +66,11 @@ export default function LoginPage() {
     setError("");
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/callback`;
+      // Prefer the production URL (set in Render) so OAuth always lands on
+      // the real domain; fall back to the current origin for local dev.
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      const redirectTo = `${baseUrl}/auth/callback`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo },
