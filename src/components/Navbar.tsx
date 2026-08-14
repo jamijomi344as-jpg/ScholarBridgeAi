@@ -42,8 +42,6 @@ export interface StudentProfile {
   researchPublications?: number | null;
   preferredLocale?: string;
   isAdmin?: boolean;
-  // Supabase Auth
-  authUserId?: string | null;
   // Referral system v2
   referralCode?: string | null;
   referredBy?: number | null;
