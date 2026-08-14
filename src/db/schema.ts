@@ -20,6 +20,8 @@ export const studentProfiles = pgTable("student_profiles", {
   researchPublications: integer("research_publications").default(0),
   preferredLocale: text("preferred_locale").notNull().default("en"),
   isAdmin: boolean("is_admin").notNull().default(false),
+  // --- Supabase Auth ---
+  authUserId: text("auth_user_id").unique(),
   // --- Referral system ---
   referralCode: text("referral_code").unique(),
   referredBy: integer("referred_by").references((): AnyPgColumn => studentProfiles.id, { onDelete: "set null" }),

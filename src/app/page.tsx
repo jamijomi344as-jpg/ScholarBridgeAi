@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Navbar, StudentProfile } from "@/components/Navbar";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { ProfileModal } from "@/components/ProfileModal";
 import { DashboardView } from "@/components/DashboardView";
 import { UniversityExplorer } from "@/components/UniversityExplorer";
@@ -23,6 +25,7 @@ import { ProfilePicker } from "@/components/ProfilePicker";
 import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export default function Home() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("dashboard");
   // "landing" = first-time visitor (English welcome page),
   // "wizard"  = step-by-step onboarding for a brand-new user,
@@ -36,6 +39,9 @@ export default function Home() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isNewProfile, setIsNewProfile] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  // Confirmed email of the signed-in Supabase user (for the wizard).
+  const [authEmail, setAuthEmail] = useState<string>("");
 
   // IDs of the accounts created / signed-in WITHIN THIS BROWSER. Other
   // people's accounts are never shown — only these.
@@ -124,31 +130,35 @@ export default function Home() {
   };
 
   /**
-   * On mount, restore ONLY the profile this browser signed in with
-   * (localStorage). If there is none, show the English landing page.
-   * Other profiles are never auto-loaded.
+   * On mount, check the Supabase session:
+   *  - signed in + linked profile  → app (dashboard)
+   *  - signed in + no profile yet  → onboarding wizard (authEmail prefilled)
+   *  - not signed in               → English landing page
    */
-  const loadStoredProfile = async () => {
+  const checkSession = async () => {
     try {
-      const storedId = Number(localStorage.getItem("scholarbridge_active_profile"));
-      if (storedId) {
-        const res = await fetch(`/api/profiles/${storedId}`);
-        const data = await res.json();
-        if (res.ok && data.profile) {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      if (res.ok && data.user) {
+        if (data.profile) {
           setActiveProfile(data.profile);
-          rememberProfile(storedId);
+          rememberProfile(data.profile.id);
           setView("app");
-          return;
+        } else {
+          // New auth user without a profile → step-by-step onboarding.
+          setAuthEmail(data.user.email || "");
+          setView("wizard");
         }
+        return;
       }
     } catch (err) {
-      console.error("Error restoring profile:", err);
+      console.error("Error checking session:", err);
     }
     setView("landing");
   };
 
   useEffect(() => {
-    loadStoredProfile();
+    checkSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -410,31 +420,49 @@ export default function Home() {
     setActiveTab("dashboard");
   };
 
-  const startOnboarding = () => setView("wizard");
+  // "Start for free" → real sign-up page (email + password + OTP).
+  const startOnboarding = () => router.push("/signup");
 
-  // Existing users (e.g. the admin) pick their profile from a list instead
-  // of being auto-dropped onto the first profile.
-  const enterApp = () => {
-    openProfilePicker();
+  // Existing users go to the login page.
+  const enterApp = () => router.push("/login");
+
+  /** Sign out: clear the Supabase session + this browser's app state. */
+  const handleLogout = async () => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Sign out error:", err);
+    }
+    try {
+      localStorage.removeItem("scholarbridge_active_profile");
+      localStorage.removeItem("scholarbridge_onboarded");
+    } catch {
+      // ignore
+    }
+    setActiveProfile(null);
+    setView("landing");
+    setActiveTab("dashboard");
   };
 
   // ---- First visit: English landing page ----
   if (view === "landing") {
     return (
       <LocaleProvider>
-        <LandingPage onStart={startOnboarding} onEnterApp={enterApp} onSignIn={openProfilePicker} />
+        <LandingPage onStart={startOnboarding} onEnterApp={enterApp} onSignIn={enterApp} />
       </LocaleProvider>
     );
   }
 
-  // ---- Brand-new user: step-by-step onboarding (creates the profile on
-  // step 1, then saves every step; resumes where the user left off) ----
+  // ---- Brand-new auth user: step-by-step onboarding (creates/claims the
+  // profile on step 1, saves every step, resumes where they left off) ----
   if (view === "wizard") {
     return (
       <LocaleProvider>
         <div className="min-h-screen bg-slate-100 py-10 px-4">
           <OnboardingWizard
             profile={null}
+            authEmail={authEmail || null}
             onCreated={handleWizardCreated}
             onComplete={handleWizardComplete}
           />
@@ -456,6 +484,7 @@ export default function Home() {
         }}
         onSwitchProfile={openProfilePicker}
         onStartOnboarding={startOnboarding}
+        onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
       />
 

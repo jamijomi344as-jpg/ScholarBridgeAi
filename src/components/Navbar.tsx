@@ -18,6 +18,7 @@ import {
   Gift,
   Trophy,
   ShieldCheck,
+  LogOut,
 } from "lucide-react";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
@@ -41,6 +42,8 @@ export interface StudentProfile {
   researchPublications?: number | null;
   preferredLocale?: string;
   isAdmin?: boolean;
+  // Supabase Auth
+  authUserId?: string | null;
   // Referral system v2
   referralCode?: string | null;
   referredBy?: number | null;
@@ -60,6 +63,7 @@ interface NavbarProps {
   onOpenProfileModal: (isNew?: boolean) => void;
   onSwitchProfile?: () => void;
   onStartOnboarding?: () => void;
+  onLogout?: () => void;
   onLocaleChange?: (locale: string) => void;
 }
 
@@ -70,6 +74,7 @@ export function Navbar({
   onOpenProfileModal,
   onSwitchProfile,
   onStartOnboarding,
+  onLogout,
   onLocaleChange,
 }: NavbarProps) {
   const navItems = [
@@ -218,6 +223,14 @@ export function Navbar({
               <Plus className="h-3 w-3" /> Add New
             </button>
           </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center justify-center gap-1.5 text-[11px] font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2.5 py-2 rounded-lg border border-red-200 transition-colors"
+            >
+              <LogOut className="h-3 w-3" /> Chiqish (Logout)
+            </button>
+          )}
           <div className="pt-1">
             <LanguageSwitcher onLocaleChange={onLocaleChange} />
           </div>

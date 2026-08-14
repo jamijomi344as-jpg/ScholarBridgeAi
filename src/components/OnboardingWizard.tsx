@@ -25,6 +25,12 @@ interface OnboardingWizardProps {
    * and every following step saves through PUT /api/profiles/:id.
    */
   profile: StudentProfile | null;
+  /**
+   * When the user signed up with Supabase Auth, this is their confirmed
+   * email — step 1 prefills it and the profile is created/claimed through
+   * POST /api/auth/profile (linked to the auth user).
+   */
+  authEmail?: string | null;
   onCreated?: (profile: StudentProfile) => void;
   onComplete: (updated: StudentProfile) => void;
 }
@@ -82,7 +88,7 @@ const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow";
 const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5";
 
-export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingWizardProps) {
+export function OnboardingWizard({ profile, authEmail, onCreated, onComplete }: OnboardingWizardProps) {
   // Resume: continue from the saved step (0-based), defaulting to step 0.
   const startStep = profile
     ? Math.min(Math.max(profile.onboardingStep ?? 0, 0), 7)
@@ -95,7 +101,7 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
   const [error, setError] = useState("");
   const [form, setForm] = useState<FormState>({
     name: profile?.name || "",
-    email: profile?.email || "",
+    email: profile?.email || authEmail || "",
     degreeLevel: profile?.degreeLevel || "",
     targetMajor: profile?.targetMajor === "Computer Science" ? "" : profile?.targetMajor || "",
     gpa: profile?.gpa ? String(profile.gpa) : "",
@@ -164,19 +170,42 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
       };
 
       if (createdId == null) {
-        // Step 1: create the profile (name + email are mandatory here).
-        const res = await fetch("/api/profiles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, referralCode: storedReferralCode() }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.profile) {
-          throw new Error(data.error || "Could not create profile");
+        // Step 1: create (or claim) the profile.
+        let created: StudentProfile;
+        if (authEmail) {
+          // Auth mode: server links the profile to the signed-in Supabase user.
+          const res = await fetch("/api/auth/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: form.name, email: form.email }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.profile) {
+            throw new Error(data.error || "Could not create profile");
+          }
+          created = data.profile as StudentProfile;
+        } else {
+          const res = await fetch("/api/profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, referralCode: storedReferralCode() }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.profile) {
+            throw new Error(data.error || "Could not create profile");
+          }
+          created = data.profile as StudentProfile;
         }
-        const created = data.profile as StudentProfile;
+
         setCreatedId(created.id);
         onCreated?.(created);
+
+        // Legacy profile claimed via auth (e.g. the admin account) is already
+        // fully onboarded — jump straight to the app.
+        if (created.onboardingCompleted) {
+          onComplete(created);
+          return created;
+        }
         return created;
       }
 
@@ -322,11 +351,18 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
               <label className={labelCls}>Email Address *</label>
               <input
                 type="email"
-                className={inputCls}
+                className={`${inputCls} ${authEmail ? "bg-slate-50 text-slate-500 cursor-not-allowed" : ""}`}
                 placeholder="aziz@example.com"
                 value={form.email}
                 onChange={(e) => set("email", e.target.value)}
+                readOnly={!!authEmail}
+                disabled={!!authEmail}
               />
+              {authEmail && (
+                <p className="text-[11px] text-emerald-600 font-semibold mt-1">
+                  ✓ Email tasdiqlangan — o'zgartirib bo'lmaydi
+                </p>
+              )}
             </div>
             <p className="text-[11px] text-slate-400">
               You can update these later anytime from &quot;Edit Profile&quot;.
