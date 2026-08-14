@@ -1,13 +1,42 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock, Loader2, ArrowRight, LogIn } from "lucide-react";
+import { Mail, Lock, Loader2, ArrowRight, LogIn, AlertCircle } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  no_code:
+    "Google tasdiqlashdan keyin saytga qaytishda xatolik yuz berdi. Supabase → Authentication → URL Configuration → Redirect URLs ga sayt manzilingizni qo'shing: https://scholarbridgeai-1.onrender.com/auth/callback",
+  exchange_failed:
+    "Google sessiyasini yaratib bo'lmadi (code exchange xatosi). Qayta urinib ko'ring.",
+  oauth_denied: "Google orqali kirish bekor qilindi yoki rad etildi.",
+  callback_error:
+    "Kirish jarayonida kutilmagan xatolik yuz berdi. Qayta urinib ko'ring.",
+  supabase_not_configured:
+    "Supabase sozlanmagan. Iltimos, administratorga murojaat qiling.",
+};
+
 export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="w-full max-w-md text-center text-indigo-100 text-sm py-10">
+          Yuklanmoqda…
+        </div>
+      }
+    >
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("error");
+  const oauthDetails = searchParams.get("details");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -107,6 +136,24 @@ export default function LoginPage() {
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
             {error}
+          </div>
+        )}
+
+        {oauthError && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-amber-800">
+                  {ERROR_MESSAGES[oauthError] || "Kirishda xatolik yuz berdi."}
+                </p>
+                {oauthDetails && (
+                  <p className="text-[10px] text-amber-600 mt-1 break-all font-mono">
+                    {oauthDetails.slice(0, 300)}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
