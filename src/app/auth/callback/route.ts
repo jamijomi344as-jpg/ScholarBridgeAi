@@ -12,6 +12,15 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
 
+  // If Supabase (mis)routed the callback to localhost (Site URL fallback),
+  // but the production URL is configured, still land the user on the real
+  // site. For genuine localhost dev we keep the local origin.
+  const isLocal = origin.includes("localhost") || origin.includes("127.0.0.1");
+  const appBase =
+    !isLocal && process.env.NEXT_PUBLIC_APP_URL
+      ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
+      : origin;
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -36,11 +45,11 @@ export async function GET(request: Request) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(`${appBase}${next}`);
     }
     console.error("OAuth code exchange error:", error);
   }
 
   // Fallback: no code / failed exchange → home page (session check decides).
-  return NextResponse.redirect(`${origin}/`);
+  return NextResponse.redirect(`${appBase}/`);
 }
