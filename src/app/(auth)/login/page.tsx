@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Mail, Lock, Loader2, ArrowRight, LogIn, AlertCircle } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { backupAuthCookies, storeFlowId } from "@/lib/supabase/oauth-utils";
+import {
+  backupAuthCookies,
+  storeFlowId,
+  clearStalePkceCookies,
+} from "@/lib/supabase/oauth-utils";
 
 const ERROR_MESSAGES: Record<string, string> = {
   no_code:
@@ -104,6 +108,10 @@ function LoginInner() {
     setBusy(true);
     setError("");
     try {
+      // Clear leftover verifier cookies from previous attempts so only ONE
+      // PKCE flow exists and the callback can always match it.
+      clearStalePkceCookies();
+
       const supabase = createSupabaseBrowserClient();
       const redirectTo = getCallbackUrl();
       // skipBrowserRedirect lets us capture the PKCE flowId and back up the

@@ -74,3 +74,31 @@ export function clearOAuthState(): void {
     // ignore
   }
 }
+
+/**
+ * Remove stale PKCE verifier cookies before starting a NEW Google flow.
+ * Only verifier cookies are cleared (`-code-verifier` / `-flows-code-verifier`
+ * / `-flow-...-code-verifier`); the signed-in session cookie
+ * (`sb-...-auth-token`) is kept untouched.
+ *
+ * Why: each flow creates its own verifier cookie. If several flows pile up,
+ * the legacy `-code-verifier` key (used when the callback has no flow id)
+ * may point at a flow whose auth code was already consumed, and Supabase
+ * answers with "invalid flow state, no valid flow state found".
+ */
+export function clearStalePkceCookies(): void {
+  try {
+    document.cookie.split("; ").forEach((c) => {
+      const i = c.indexOf("=");
+      if (i <= 0) return;
+      const name = c.slice(0, i);
+      // Session cookie is `sb-...-auth-token` (no "code-verifier" in its
+      // name) so this only clears verifier cookies, never the session.
+      if (name.includes("code-verifier")) {
+        document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+      }
+    });
+  } catch {
+    // ignore
+  }
+}

@@ -5,11 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import {
-  restoreAuthCookies,
-  getStoredFlowId,
-  clearOAuthState,
-} from "@/lib/supabase/oauth-utils";
+import { restoreAuthCookies, clearOAuthState } from "@/lib/supabase/oauth-utils";
 
 /**
  * OAuth callback — CLIENT-SIDE PKCE code exchange.
@@ -45,12 +41,23 @@ function CallbackInner() {
   const [debug, setDebug] = useState<string[]>([]);
   const [status, setStatus] = useState("Google orqali kirish tasdiqlanmoqda…");
 
+  /** Sanitize the `next` param to avoid open redirects. */
+  const safeNext = (next: string): string =>
+    typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
+      ? next
+      : "/";
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const code = searchParams.get("code");
-      // Flow id: prefer the URL param, fall back to what the login page saved.
-      const flowId = searchParams.get("sb_flow_id") || getStoredFlowId() || undefined;
+      // IMPORTANT: do NOT pass a flowId from localStorage — it may belong to
+      // a different (already consumed) flow, which makes Supabase reject the
+      // exchange with "invalid flow state". Let the SDK resolve the flow
+      // itself: it reads `sb_flow_id` from the URL if present, otherwise it
+      // falls back to the legacy `-code-verifier` cookie (the most recent
+      // flow — which is the one that produced this code).
+      const flowId = searchParams.get("sb_flow_id") || undefined;
       const errorParam = searchParams.get("error");
       const next = searchParams.get("next") ?? "/";
 
@@ -94,18 +101,40 @@ function CallbackInner() {
 
       try {
         const supabase = createSupabaseBrowserClient();
-        // Explicit flow id (new multi-flow PKCE) — the SDK also auto-reads it
-        // from the URL, but passing it explicitly is the documented way.
+
+        // 1) If a session already exists (e.g. this callback ran before and
+        // the exchange already succeeded), just continue into the app —
+        // exchanging the same code again would fail with "invalid flow state".
+        const {
+          data: { user: existingUser },
+        } = await supabase.auth.getUser();
+        if (existingUser) {
+          clearOAuthState();
+          if (!cancelled) router.replace(safeNext(next));
+          return;
+        }
+
+        // 2) Exchange the code. No explicit flowId from localStorage — the
+        // SDK resolves the flow from the URL (sb_flow_id) or the legacy key.
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(
           code,
           flowId ? { flowId } : undefined
         );
-        // The flow is finished (success or failure) — clean our saved state.
         clearOAuthState();
 
         if (cancelled) return;
 
         if (exchangeError) {
+          // 3) The exchange may have failed because ANOTHER tab/run already
+          // consumed the code and created the session. Double-check before
+          // giving up.
+          const {
+            data: { user: retryUser },
+          } = await supabase.auth.getUser();
+          if (retryUser) {
+            router.replace(safeNext(next));
+            return;
+          }
           console.error("Client OAuth exchange error:", exchangeError);
           setError(
             "Sessiya yaratib bo'lmadi: " +
@@ -116,11 +145,7 @@ function CallbackInner() {
         }
 
         setStatus("Muvaffaqiyatli! Kirilmoqda…");
-        const safeNext =
-          typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
-            ? next
-            : "/";
-        setTimeout(() => router.replace(safeNext), 400);
+        setTimeout(() => router.replace(safeNext(next)), 400);
       } catch (err: any) {
         if (!cancelled) setError("Xatolik: " + (err?.message || String(err)));
       }
