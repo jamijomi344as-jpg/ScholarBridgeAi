@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Mail, Lock, Loader2, ArrowRight, LogIn, AlertCircle } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { backupAuthCookies, storeFlowId } from "@/lib/supabase/oauth-utils";
 
 const ERROR_MESSAGES: Record<string, string> = {
   no_code:
@@ -105,11 +106,28 @@ function LoginInner() {
     try {
       const supabase = createSupabaseBrowserClient();
       const redirectTo = getCallbackUrl();
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      // skipBrowserRedirect lets us capture the PKCE flowId and back up the
+      // verifier cookies before the browser leaves for Google.
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo },
+        options: { redirectTo, skipBrowserRedirect: true },
       });
-      if (oauthError) setError(oauthError.message || "Google orqali kirishda xatolik yuz berdi.");
+
+      if (oauthError) {
+        setError(oauthError.message || "Google orqali kirishda xatolik yuz berdi.");
+        return;
+      }
+      if (!data?.url) {
+        setError("Google manzili olinmadi. Qayta urinib ko'ring.");
+        return;
+      }
+
+      // Remember the flow + verifier cookies so the callback can restore
+      // them if the browser drops them during the Google round-trip.
+      storeFlowId(data.flowId);
+      backupAuthCookies();
+
+      window.location.assign(data.url);
     } catch (err: any) {
       setError(err.message || "Google orqali kirishda xatolik yuz berdi.");
     } finally {
