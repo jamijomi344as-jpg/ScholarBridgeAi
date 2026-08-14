@@ -29,6 +29,22 @@ function VerifyEmailInner() {
   const [resendIn, setResendIn] = useState(0);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
+  // If the user already confirmed their email by CLICKING THE LINK from the
+  // email, a session exists — skip the code screen and go straight in.
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data } = await supabase.auth.getUser();
+        if (data?.user) {
+          router.replace("/");
+        }
+      } catch {
+        // supabase env not configured yet — ignore
+      }
+    })();
+  }, [router]);
+
   // Resend countdown timer.
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -216,6 +232,20 @@ function VerifyEmailInner() {
             Qayta ro&apos;yxatdan o&apos;tish
           </Link>
         </p>
+
+        {/* Fallback: user received a LINK instead of a code */}
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-center">
+          <p className="text-[11px] text-slate-600">
+            Emailingizda kod o&apos;rniga <b>havola</b> keldimi? Havolani bosgan
+            bo&apos;lsangiz:
+          </p>
+          <button
+            onClick={() => router.replace("/")}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> Men tasdiqladim — davom etish
+          </button>
+        </div>
       </div>
     </div>
   );
