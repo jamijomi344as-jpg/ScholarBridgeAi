@@ -12,14 +12,12 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
 
-  // If Supabase (mis)routed the callback to localhost (Site URL fallback),
-  // but the production URL is configured, still land the user on the real
-  // site. For genuine localhost dev we keep the local origin.
-  const isLocal = origin.includes("localhost") || origin.includes("127.0.0.1");
-  const appBase =
-    !isLocal && process.env.NEXT_PUBLIC_APP_URL
-      ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
-      : origin;
+  // Always prefer a real public NEXT_PUBLIC_APP_URL when it is configured —
+  // even if the request somehow arrives at a localhost origin. This keeps
+  // the user on the production domain.
+  const envBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const envIsLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(envBase);
+  const appBase = !envIsLocal && envBase ? envBase : origin;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

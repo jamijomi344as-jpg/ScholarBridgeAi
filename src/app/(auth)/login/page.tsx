@@ -66,10 +66,14 @@ export default function LoginPage() {
     setError("");
     try {
       const supabase = createSupabaseBrowserClient();
-      // Prefer the production URL (set in Render) so OAuth always lands on
-      // the real domain; fall back to the current origin for local dev.
-      const baseUrl =
-        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      // ALWAYS redirect to the domain the user is actually on. If
+      // NEXT_PUBLIC_APP_URL is (wrongly) set to a localhost address, ignore
+      // it — otherwise OAuth would send the user to their own machine.
+      const envBase = process.env.NEXT_PUBLIC_APP_URL || "";
+      const envIsLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(envBase);
+      const baseUrl = envIsLocal
+        ? window.location.origin
+        : envBase || window.location.origin;
       const redirectTo = `${baseUrl}/auth/callback`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
