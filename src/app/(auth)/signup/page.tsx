@@ -43,9 +43,14 @@ export default function SignupPage() {
       });
 
       if (authError) {
-        if (authError.message.toLowerCase().includes("already registered")) {
+        const msg = (authError.message || "").toLowerCase();
+        if (msg.includes("already registered")) {
           setError(
             "Bu email allaqachon ro'yxatdan o'tgan. Kirish sahifasidan kirishingiz mumkin."
+          );
+        } else if (msg.includes("sending confirmation email") || msg.includes("email provider") || msg.includes("rate limit") || msg.includes("too many")) {
+          setError(
+            "Tasdiqlash xatini yuborib bo'lmadi. Sabab: Supabase email xizmati cheklovi (soatiga 2-4 ta xat) yoki SMTP sozlanmagan. Iltimos: 30-60 daqiqa kuting yoki Supabase Auth sozlamalarida SMTP o'rnating."
           );
         } else {
           setError(authError.message);
