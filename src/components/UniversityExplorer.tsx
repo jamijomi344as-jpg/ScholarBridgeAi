@@ -200,7 +200,7 @@ export function UniversityExplorer({
           <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex flex-col justify-center">
             <div className="flex justify-between items-center text-[11px] font-semibold text-slate-700">
               <span>Max Tuition:</span>
-              <span className="text-indigo-600 font-bold">${maxTuition.toLocaleString()}/yr</span>
+              <span className="text-indigo-600 font-bold">${(maxTuition || 0).toLocaleString()}/yr</span>
             </div>
             <input
               type="range"
@@ -276,7 +276,7 @@ export function UniversityExplorer({
                   {/* World Rank Badge */}
                   <div className="absolute top-3 right-3 bg-slate-900/80 text-amber-300 text-[11px] font-bold px-2.5 py-1 rounded-full backdrop-blur-md border border-white/10 flex items-center gap-1">
                     <Star className="h-3 w-3 fill-amber-300" />
-                    World #{uni.worldRanking}
+                    World #{uni.worldRanking ?? '—'}
                   </div>
 
                   {/* Title & Country Overlay */}
@@ -305,11 +305,11 @@ export function UniversityExplorer({
                     <div className="grid grid-cols-2 gap-2 my-3 text-[11px] bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                       <div>
                         <span className="text-slate-400 block">Annual Tuition:</span>
-                        <strong className="text-slate-900">${uni.annualTuitionUsd.toLocaleString()}</strong>
+                        <strong className="text-slate-900">${(uni.annualTuitionUsd || 0).toLocaleString()}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Living Est.:</span>
-                        <strong className="text-slate-900">${uni.annualLivingEstUsd.toLocaleString()}/yr</strong>
+                        <strong className="text-slate-900">${(uni.annualLivingEstUsd || 0).toLocaleString()}/yr</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Min GPA:</span>
@@ -339,7 +339,7 @@ export function UniversityExplorer({
                       <Briefcase className="h-3.5 w-3.5 text-indigo-600" />
                       Post-Study Work Visa:
                     </span>
-                    <strong className="text-slate-900 font-bold">{uni.postStudyWorkVisaYears} Years</strong>
+                    <strong className="text-slate-900 font-bold">{uni.postStudyWorkVisaYears ?? '—'} Years</strong>
                   </div>
 
                   {/* Action Buttons */}
@@ -427,7 +427,7 @@ export function UniversityExplorer({
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">World Ranking</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 font-bold text-indigo-600">#{u.worldRanking}</td>
+                      <td key={u.id} className="py-2.5 px-4 font-bold text-indigo-600">#{u.worldRanking ?? '—'}</td>
                     ))}
                   </tr>
                   <tr>
@@ -439,19 +439,19 @@ export function UniversityExplorer({
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Annual Tuition</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900 font-bold">${u.annualTuitionUsd.toLocaleString()}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900 font-bold">${(u.annualTuitionUsd || 0).toLocaleString()}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Living Expenses</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">${u.annualLivingEstUsd.toLocaleString()}/yr</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">${(u.annualLivingEstUsd || 0).toLocaleString()}/yr</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Post-Study Work Visa</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 font-bold text-amber-700">{u.postStudyWorkVisaYears} Years</td>
+                      <td key={u.id} className="py-2.5 px-4 font-bold text-amber-700">{u.postStudyWorkVisaYears ?? '—'} Years</td>
                     ))}
                   </tr>
                   <tr>
@@ -469,7 +469,7 @@ export function UniversityExplorer({
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Acceptance Rate</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.acceptanceRate}%</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.acceptanceRate ?? '—'}%</td>
                     ))}
                   </tr>
                 </tbody>

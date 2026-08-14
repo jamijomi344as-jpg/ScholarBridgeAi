@@ -161,7 +161,7 @@ export function ApplicationTracker({
 
                       <div className="text-xs text-slate-600 flex flex-wrap items-center gap-3">
                         <span>🎓 {u.programMajor}</span>
-                        <span>💵 Tuition: ${u.annualTuitionUsd.toLocaleString()}/yr</span>
+                        <span>💵 Tuition: ${(u.annualTuitionUsd || 0).toLocaleString()}/yr</span>
                         <span>📍 {u.city}, {u.country}</span>
                       </div>
 
@@ -289,7 +289,7 @@ export function ApplicationTracker({
                       </div>
 
                       <div className="text-xs text-slate-600 flex flex-wrap items-center gap-3">
-                        <span>💰 Value: ${s.amountUsdValue?.toLocaleString()}/yr</span>
+                        <span>💰 Value: ${(s.amountUsdValue || 0).toLocaleString()}/yr</span>
                         <span>💵 Type: {s.coverageType}</span>
                         <span>📅 Deadline: {s.deadline}</span>
                       </div>
