@@ -10,8 +10,6 @@
     "db:push": "drizzle-kit push --force"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.4",
-    "@supabase/supabase-js": "^2.112.3",
     "@types/canvas-confetti": "^1.9.0",
     "canvas-confetti": "^1.9.4",
     "dotenv": "17.3.1",
