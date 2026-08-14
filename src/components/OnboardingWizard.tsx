@@ -174,9 +174,23 @@ export function OnboardingWizard({ profile, authEmail, onCreated, onComplete }: 
         let created: StudentProfile;
         if (authEmail) {
           // Auth mode: server links the profile to the signed-in Supabase user.
+          // Pass the access token too — the server may not read the cookies.
+          let bearer = "";
+          try {
+            const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+            const {
+              data: { session },
+            } = await createSupabaseBrowserClient().auth.getSession();
+            bearer = session?.access_token ? `Bearer ${session.access_token}` : "";
+          } catch {
+            // ignore
+          }
           const res = await fetch("/api/auth/profile", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(bearer ? { Authorization: bearer } : {}),
+            },
             body: JSON.stringify({ name: form.name, email: form.email }),
           });
           const data = await res.json();

@@ -137,8 +137,30 @@ export default function Home() {
    */
   const checkSession = async () => {
     try {
-      const res = await fetch("/api/auth/me");
-      const data = await res.json();
+      // 1) Try the normal cookie-based check.
+      let res = await fetch("/api/auth/me");
+      let data = await res.json();
+
+      // 2) Fallback: the browser client can always read its own cookies.
+      //    If the server couldn't see the session cookies, pass the access
+      //    token explicitly (Bearer) and re-check.
+      if (!data.user) {
+        try {
+          const supabase = createSupabaseBrowserClient();
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            res = await fetch("/api/auth/me", {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            data = await res.json();
+          }
+        } catch (err) {
+          console.error("Client session fallback error:", err);
+        }
+      }
+
       if (res.ok && data.user) {
         if (data.profile) {
           setActiveProfile(data.profile);

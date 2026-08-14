@@ -16,9 +16,19 @@ import { eq, sql } from "drizzle-orm";
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
-    const {
+
+    // Session: cookies first, then Bearer token fallback (client-side OAuth).
+    let {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!user) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        const { data } = await supabase.auth.getUser(token);
+        user = data.user ?? null;
+      }
+    }
 
     if (!user) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
