@@ -224,32 +224,66 @@ export function Navbar({
         </div>
       </aside>
 
-      {/* ================= MOBILE: TOP HEADER + HORIZONTAL TABS ================= */}
+      {/* ================= MOBILE: TOP HEADER ================= */}
       <header className="lg:hidden sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs">
-        <div className="px-4">
+        <div className="px-3 sm:px-4">
+          {/* Row 1: logo + actions */}
           <div className="flex items-center justify-between h-14 gap-2">
-            {Logo}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="max-w-[180px] flex-1">{ProfileChip}</div>
+            <button className="flex items-center gap-2 min-w-0" onClick={() => setActiveTab("dashboard")}>
+              <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center overflow-hidden shadow-sm border border-slate-200 shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
+                  alt="ScholarBridge Logo"
+                  className="h-8 w-8 object-cover"
+                />
+              </div>
+              <span className="font-bold text-base tracking-tight text-slate-900 truncate">
+                ScholarBridge
+              </span>
+            </button>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <LanguageSwitcher onLocaleChange={onLocaleChange} />
               <button
-                onClick={() => onOpenProfileModal(false)}
-                className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1.5 rounded-lg border border-indigo-200 shrink-0"
+                onClick={onSwitchProfile}
+                className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-2 rounded-lg border border-indigo-200"
+                title="Sign in / switch account"
               >
-                Edit
+                <User className="h-3 w-3" />
+                {activeProfile ? "Switch" : "Sign in"}
               </button>
               <button
                 onClick={onStartOnboarding ?? (() => onOpenProfileModal(true))}
-                className="p-1.5 text-slate-600 hover:text-indigo-600 bg-slate-100 rounded-lg shrink-0"
+                className="p-2 text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200 rounded-lg"
                 title="Add New Profile"
               >
                 <Plus className="h-4 w-4" />
               </button>
-              <LanguageSwitcher onLocaleChange={onLocaleChange} />
             </div>
           </div>
+
+          {/* Row 2: active profile chip (compact) */}
+          {activeProfile && (
+            <div className="flex items-center gap-2 pb-2 -mt-0.5">
+              <div className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-2.5 py-1.5 border border-slate-200 min-w-0">
+                <User className="h-3 w-3 text-slate-500 shrink-0" />
+                <span className="truncate text-[11px] font-semibold text-slate-800">
+                  {activeProfile.name}
+                </span>
+                {isAdmin && <ShieldCheck className="h-3 w-3 text-slate-700 shrink-0" />}
+              </div>
+              <button
+                onClick={() => onOpenProfileModal(false)}
+                className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1.5 rounded-lg border border-indigo-200 shrink-0"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
         {/* Navigation Tabs (horizontal scroll) */}
-        <div className="flex overflow-x-auto space-x-1 sm:space-x-2 py-2 px-4 no-scrollbar border-t border-slate-100">
+        <div className="flex overflow-x-auto space-x-1 py-2 px-3 sm:px-4 no-scrollbar border-t border-slate-100">
           {renderNav(false)}
         </div>
       </header>
