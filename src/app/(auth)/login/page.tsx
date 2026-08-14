@@ -61,20 +61,21 @@ export default function LoginPage() {
     }
   };
 
+  /** The callback URL the browser will be redirected to after Google auth. */
+  const getCallbackUrl = (): string => {
+    if (typeof window === "undefined") return "";
+    const envBase = process.env.NEXT_PUBLIC_APP_URL || "";
+    const envIsLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(envBase);
+    const base = envIsLocal ? window.location.origin : envBase || window.location.origin;
+    return `${base}/auth/callback`;
+  };
+
   const handleGoogle = async () => {
     setBusy(true);
     setError("");
     try {
       const supabase = createSupabaseBrowserClient();
-      // ALWAYS redirect to the domain the user is actually on. If
-      // NEXT_PUBLIC_APP_URL is (wrongly) set to a localhost address, ignore
-      // it — otherwise OAuth would send the user to their own machine.
-      const envBase = process.env.NEXT_PUBLIC_APP_URL || "";
-      const envIsLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(envBase);
-      const baseUrl = envIsLocal
-        ? window.location.origin
-        : envBase || window.location.origin;
-      const redirectTo = `${baseUrl}/auth/callback`;
+      const redirectTo = getCallbackUrl();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo },
@@ -124,6 +125,10 @@ export default function LoginPage() {
           </svg>
           Google bilan kirish
         </button>
+        {/* Dev aid: shows exactly where OAuth will send the user. */}
+        <p className="text-center text-[10px] text-slate-300 break-all">
+          Callback: {getCallbackUrl()}
+        </p>
 
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-slate-200" />
