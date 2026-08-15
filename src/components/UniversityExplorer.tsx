@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { StudentProfile } from "./Navbar";
+import { UniversityDetail } from "./UniversityDetail";
 import { 
   Search, 
   Globe, 
@@ -19,7 +20,8 @@ import {
   Sparkles,
   X,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from "lucide-react";
 
 export interface University {
@@ -75,9 +77,15 @@ export function UniversityExplorer({
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [showCompareModal, setShowCompareModal] = useState(false);
 
+  // Detail view + sorting
+  const [selectedUniId, setSelectedUniId] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState("rank");
+
   useEffect(() => {
-    fetchUniversities();
-  }, [activeProfile?.id, selectedCountry, selectedLevel, maxTuition]);
+    const t = setTimeout(() => fetchUniversities(), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProfile?.id, selectedCountry, selectedLevel, maxTuition, search, sortBy]);
 
   const fetchUniversities = async () => {
     setLoading(true);
@@ -88,6 +96,8 @@ export function UniversityExplorer({
       if (selectedCountry !== "All") params.set("country", selectedCountry);
       if (selectedLevel !== "All") params.set("degreeLevel", selectedLevel);
       if (maxTuition < 70000) params.set("maxTuition", maxTuition.toString());
+      if (search.trim()) params.set("search", search.trim());
+      if (sortBy !== "rank") params.set("sort", sortBy);
 
       const res = await fetch(`/api/universities?${params.toString()}`);
       const data = await res.json();
@@ -112,16 +122,7 @@ export function UniversityExplorer({
     }
   };
 
-  const filteredUniversities = universities.filter((u) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      u.name.toLowerCase().includes(s) ||
-      u.programMajor.toLowerCase().includes(s) ||
-      u.city.toLowerCase().includes(s) ||
-      u.country.toLowerCase().includes(s)
-    );
-  });
+  const filteredUniversities = universities;
 
   const toggleCompare = (id: number) => {
     setCompareIds((prev) => {
@@ -138,6 +139,10 @@ export function UniversityExplorer({
   };
 
   const comparedUniversities = universities.filter((u) => compareIds.includes(u.id));
+
+  if (selectedUniId != null) {
+    return <UniversityDetail universityId={selectedUniId} onBack={() => setSelectedUniId(null)} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -210,6 +215,20 @@ export function UniversityExplorer({
               <option value="Bachelor">Bachelor Degree</option>
               <option value="Master">Master Degree</option>
               <option value="PhD">PhD / Doctorate</option>
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+            >
+              <option value="rank">🏆 Sort: QS Ranking</option>
+              <option value="tuition_asc">💰 Tuition: Low → High</option>
+              <option value="tuition_desc">💰 Tuition: High → Low</option>
+              <option value="name_asc">🔤 Name: A → Z</option>
             </select>
           </div>
 
@@ -329,23 +348,23 @@ export function UniversityExplorer({
                       {uni.description}
                     </p>
 
-                    {/* Key Requirements Grid */}
+                    {/* Key Requirements Grid — NULL = Not available (spec §19) */}
                     <div className="grid grid-cols-2 gap-2 my-3 text-[11px] bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                       <div>
                         <span className="text-slate-400 block">Annual Tuition:</span>
-                        <strong className="text-slate-900">${(uni.annualTuitionUsd || 0).toLocaleString()}</strong>
+                        <strong className="text-slate-900">{uni.annualTuitionUsd != null ? `$${uni.annualTuitionUsd.toLocaleString()}` : "Not available"}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Living Est.:</span>
-                        <strong className="text-slate-900">${(uni.annualLivingEstUsd || 0).toLocaleString()}/yr</strong>
+                        <strong className="text-slate-900">{uni.annualLivingEstUsd != null ? `$${uni.annualLivingEstUsd.toLocaleString()}/yr` : "Not available"}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Min GPA:</span>
-                        <strong className="text-slate-900">{uni.minGpa} / 4.0</strong>
+                        <strong className="text-slate-900">{uni.minGpa != null ? `${uni.minGpa} / 4.0` : "Not specified"}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Min IELTS:</span>
-                        <strong className="text-slate-900">{uni.minIelts}</strong>
+                        <strong className="text-slate-900">{uni.minIelts != null ? uni.minIelts : "Not specified"}</strong>
                       </div>
                     </div>
 
@@ -379,13 +398,13 @@ export function UniversityExplorer({
                     )}
                   </div>
 
-                  {/* Post-study Work Permit Banner */}
+                  {/* Post-study Work Permit Banner (NULL = not specified) */}
                   <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 text-slate-600">
                     <span className="flex items-center gap-1 font-medium">
                       <Briefcase className="h-3.5 w-3.5 text-indigo-600" />
                       Post-Study Work Visa:
                     </span>
-                    <strong className="text-slate-900 font-bold">{uni.postStudyWorkVisaYears ?? '—'} Years</strong>
+                    <strong className="text-slate-900 font-bold">{uni.postStudyWorkVisaYears != null ? `${uni.postStudyWorkVisaYears} Years` : "Not specified"}</strong>
                   </div>
 
                   {/* Action Buttons */}
@@ -410,6 +429,14 @@ export function UniversityExplorer({
                       >
                         <ExternalLink className="h-4 w-4" />
                       </a>
+
+                      <button
+                        onClick={() => setSelectedUniId(uni.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        View University
+                      </button>
 
                       {isSaved ? (
                         <button
@@ -485,13 +512,13 @@ export function UniversityExplorer({
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Annual Tuition</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900 font-bold">${(u.annualTuitionUsd || 0).toLocaleString()}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900 font-bold">{u.annualTuitionUsd != null ? `$${u.annualTuitionUsd.toLocaleString()}` : "Not available"}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Living Expenses</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">${(u.annualLivingEstUsd || 0).toLocaleString()}/yr</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.annualLivingEstUsd != null ? `$${u.annualLivingEstUsd.toLocaleString()}/yr` : "Not available"}</td>
                     ))}
                   </tr>
                   <tr>
@@ -503,13 +530,13 @@ export function UniversityExplorer({
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Min GPA Cutoff</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.minGpa} / 4.0</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.minGpa != null ? `${u.minGpa} / 4.0` : "Not specified"}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Min IELTS Cutoff</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.minIelts}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.minIelts != null ? u.minIelts : "Not specified"}</td>
                     ))}
                   </tr>
                   <tr>

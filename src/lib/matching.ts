@@ -26,17 +26,17 @@ export interface UniversityData {
   worldRanking: number;
   degreeLevel: string;
   programMajor: string;
-  annualTuitionUsd: number;
-  annualLivingEstUsd: number;
-  minGpa: number;
-  minIelts: number;
+  annualTuitionUsd?: number | null;
+  annualLivingEstUsd?: number | null;
+  minGpa?: number | null;
+  minIelts?: number | null;
   minSat?: number | null;
-  acceptanceRate: number;
-  postStudyWorkVisaYears: number;
+  acceptanceRate?: number | null;
+  postStudyWorkVisaYears?: number | null;
   description: string;
   highlights: string;
   websiteUrl: string;
-  imageUrl: string;
+  imageUrl?: string | null;
 }
 
 export interface ScholarshipData {
@@ -65,27 +65,30 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
 
   // Normalize GPA to 4.0 scale (spec §23 — explain the score)
   const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
-  const gpaDiff = normGpa - uni.minGpa;
 
-  if (gpaDiff >= 0.5) {
-    score += 15;
-    reasons.push(`GPA ${normGpa.toFixed(2)} well above the ${uni.minGpa} minimum`);
-  } else if (gpaDiff >= 0.2) {
-    score += 10;
-    reasons.push(`GPA ${normGpa.toFixed(2)} above the ${uni.minGpa} minimum`);
-  } else if (gpaDiff >= 0) {
-    score += 5;
-    reasons.push(`GPA ${normGpa.toFixed(2)} meets the ${uni.minGpa} minimum`);
-  } else if (gpaDiff >= -0.3) {
-    score -= 12;
-    potentialIssues.push(`GPA ${normGpa.toFixed(2)} slightly below the ${uni.minGpa} minimum`);
-  } else {
-    score -= 25;
-    potentialIssues.push(`GPA ${normGpa.toFixed(2)} is below the ${uni.minGpa} requirement`);
+  // GPA — only when the university officially specifies a minimum (spec §14).
+  if (uni.minGpa != null) {
+    const gpaDiff = normGpa - uni.minGpa;
+    if (gpaDiff >= 0.5) {
+      score += 15;
+      reasons.push(`GPA ${normGpa.toFixed(2)} well above the ${uni.minGpa} minimum`);
+    } else if (gpaDiff >= 0.2) {
+      score += 10;
+      reasons.push(`GPA ${normGpa.toFixed(2)} above the ${uni.minGpa} minimum`);
+    } else if (gpaDiff >= 0) {
+      score += 5;
+      reasons.push(`GPA ${normGpa.toFixed(2)} meets the ${uni.minGpa} minimum`);
+    } else if (gpaDiff >= -0.3) {
+      score -= 12;
+      potentialIssues.push(`GPA ${normGpa.toFixed(2)} slightly below the ${uni.minGpa} minimum`);
+    } else {
+      score -= 25;
+      potentialIssues.push(`GPA ${normGpa.toFixed(2)} is below the ${uni.minGpa} requirement`);
+    }
   }
 
-  // Language Requirement Check
-  if (profile.ieltsScore && uni.minIelts) {
+  // Language Requirement Check — only when specified.
+  if (profile.ieltsScore && uni.minIelts != null) {
     if (profile.ieltsScore >= uni.minIelts + 0.5) {
       score += 8;
       reasons.push(`IELTS ${profile.ieltsScore} above the ${uni.minIelts} requirement`);
@@ -98,20 +101,22 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
     }
   }
 
-  // Budget Alignment
-  const totalUniCost = uni.annualTuitionUsd + uni.annualLivingEstUsd;
-  if (profile.budgetAnnualUsd >= totalUniCost) {
-    score += 10;
-    reasons.push(`Estimated cost $${totalUniCost.toLocaleString()}/yr fits your budget`);
-  } else {
-    const budgetDeficit = totalUniCost - profile.budgetAnnualUsd;
-    potentialIssues.push(
-      `Estimated cost $${totalUniCost.toLocaleString()}/yr exceeds your $${profile.budgetAnnualUsd.toLocaleString()} budget`
-    );
-    if (budgetDeficit > 30000 && !profile.needScholarship) {
-      score -= 20;
-    } else if (budgetDeficit > 15000) {
-      score -= 10;
+  // Budget Alignment — only when tuition data is verified (NULL ≠ $0, spec §16).
+  if (uni.annualTuitionUsd != null) {
+    const totalUniCost = uni.annualTuitionUsd + (uni.annualLivingEstUsd ?? 0);
+    if (profile.budgetAnnualUsd >= totalUniCost) {
+      score += 10;
+      reasons.push(`Estimated cost $${totalUniCost.toLocaleString()}/yr fits your budget`);
+    } else {
+      const budgetDeficit = totalUniCost - profile.budgetAnnualUsd;
+      potentialIssues.push(
+        `Estimated cost $${totalUniCost.toLocaleString()}/yr exceeds your $${profile.budgetAnnualUsd.toLocaleString()} budget`
+      );
+      if (budgetDeficit > 30000 && !profile.needScholarship) {
+        score -= 20;
+      } else if (budgetDeficit > 15000) {
+        score -= 10;
+      }
     }
   }
 

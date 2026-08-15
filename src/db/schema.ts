@@ -38,23 +38,43 @@ export const studentProfiles = pgTable("student_profiles", {
 export const universities = pgTable("universities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  shortName: text("short_name"),
   country: text("country").notNull(),
   city: text("city").notNull(),
   flagEmoji: text("flag_emoji").notNull().default("🌐"),
   worldRanking: integer("world_ranking").notNull(),
   degreeLevel: text("degree_level").notNull().default("All"),
   programMajor: text("program_major").notNull(),
-  annualTuitionUsd: integer("annual_tuition_usd").notNull(),
-  annualLivingEstUsd: integer("annual_living_est_usd").notNull(),
-  minGpa: doublePrecision("min_gpa").notNull().default(3.0),
-  minIelts: doublePrecision("min_ielts").notNull().default(6.5),
-  minSat: integer("min_sat").default(1200),
-  acceptanceRate: doublePrecision("acceptance_rate").notNull(),
-  postStudyWorkVisaYears: doublePrecision("post_study_work_visa_years").notNull().default(2.0),
+  // --- Financial (NULL = not verified, spec §14) ---
+  annualTuitionUsd: integer("annual_tuition_usd"),
+  annualLivingEstUsd: integer("annual_living_est_usd"),
+  tuitionCurrency: text("tuition_currency").notNull().default("USD"),
+  applicationFee: integer("application_fee"),
+  applicationFeeCurrency: text("application_fee_currency").notNull().default("USD"),
+  // --- Academic requirements (NULL = not officially specified) ---
+  minGpa: doublePrecision("min_gpa"),
+  minIelts: doublePrecision("min_ielts"),
+  minToefl: integer("min_toefl"),
+  minDuolingo: integer("min_duolingo"),
+  minSat: integer("min_sat"),
+  minAct: integer("min_act"),
+  acceptanceRate: doublePrecision("acceptance_rate"),
+  // --- Institutional info ---
+  foundedYear: integer("founded_year"),
+  universityType: text("university_type"), // Public | Private
+  internationalStudentsCount: integer("international_students_count"),
+  internationalStudentsPct: doublePrecision("international_students_pct"),
+  isEnglishTaught: boolean("is_english_taught").notNull().default(false),
+  postStudyWorkVisaYears: doublePrecision("post_study_work_visa_years"),
+  postStudyVisaNote: text("post_study_visa_note"),
+  // --- Links ---
+  undergraduateUrl: text("undergraduate_url"),
+  internationalUrl: text("international_url"),
+  applicationPlatform: text("application_platform"),
   description: text("description").notNull(),
   highlights: text("highlights").notNull().default("[]"),
   websiteUrl: text("website_url").notNull(),
-  imageUrl: text("image_url").notNull(),
+  imageUrl: text("image_url"),
   // --- Source verification (spec §8) ---
   sourceUrl: text("source_url"),
   lastVerifiedAt: timestamp("last_verified_at"),
@@ -519,4 +539,89 @@ export const consultingRequests = pgTable("consulting_requests", {
   adminNotes: text("admin_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 11. UNIVERSITY DISCOVERY — RELATED TABLES (spec §15)
+// ---------------------------------------------------------------------------
+
+/** Programs offered at a university. */
+export const universityPrograms = pgTable("university_programs", {
+  id: serial("id").primaryKey(),
+  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  field: text("field"), // Computer Science, AI, Business...
+  degree: text("degree"), // Bachelor's | Master's | PhD
+  durationYears: doublePrecision("duration_years"),
+  language: text("language"),
+  tuitionAmount: integer("tuition_amount"),
+  tuitionCurrency: text("tuition_currency").notNull().default("USD"),
+  applicationDeadline: date("application_deadline"),
+  minIelts: doublePrecision("min_ielts"),
+  minSat: integer("min_sat"),
+  programUrl: text("program_url"),
+  isActive: boolean("is_active").notNull().default(true),
+  verificationStatus: text("verification_status").notNull().default("unverified"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Program-level academic requirements. */
+export const programRequirements = pgTable("program_requirements", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").references(() => universityPrograms.id, { onDelete: "cascade" }).notNull(),
+  requirementType: text("requirement_type").notNull(), // gpa | ielts | toefl | duolingo | sat | act | ib | alevel | documents
+  minimumValue: doublePrecision("minimum_value"),
+  valueText: text("value_text"),
+  notes: text("notes"),
+  verificationStatus: text("verification_status").notNull().default("unverified"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Application cycles / deadlines (multiple rounds, exact or estimated). */
+export const applicationCycles = pgTable("application_cycles", {
+  id: serial("id").primaryKey(),
+  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
+  cycleYear: integer("cycle_year").notNull(),
+  openingDate: date("opening_date"),
+  deadline: date("deadline"),
+  deadlineType: text("deadline_type").notNull().default("exact"), // exact | early | regular | late | rolling
+  isEstimated: boolean("is_estimated").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Verified sources for a university (spec §13). */
+export const universitySources = pgTable("university_sources", {
+  id: serial("id").primaryKey(),
+  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  url: text("url").notNull(),
+  sourceType: text("source_type").notNull().default("official_university"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Campus information. */
+export const campuses = pgTable("campuses", {
+  id: serial("id").primaryKey(),
+  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull().default("Main Campus"),
+  address: text("address"),
+  city: text("city"),
+  country: text("country"),
+  mapUrl: text("map_url"),
+  nearbyAirport: text("nearby_airport"),
+  accommodationInfo: text("accommodation_info"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Real university campus images (spec §10 — no fake images). */
+export const universityImages = pgTable("university_images", {
+  id: serial("id").primaryKey(),
+  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
+  imageUrl: text("image_url").notNull(),
+  caption: text("caption"),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  sourceUrl: text("source_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
