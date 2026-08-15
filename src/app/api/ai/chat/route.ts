@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { studentProfiles } from "@/db/schema";
-import { callGemini } from "@/lib/gemini";
+import { callAI } from "@/lib/ai";
 import { eq } from "drizzle-orm";
 import { localeToLanguageName } from "@/i18n/config";
 
@@ -46,7 +46,7 @@ ${profileContext}`;
 
     const fullPrompt = `${historyText ? "CONVERSATION HISTORY:\n" + historyText + "\n\n" : ""}User Question: ${message}`;
 
-    let reply = await callGemini(fullPrompt, systemInstruction);
+    let reply = await callAI(fullPrompt, systemInstruction);
 
     if (!reply) {
       // Intelligent fallback responses based on query topic

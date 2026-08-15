@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { callGemini } from "@/lib/gemini";
+import { callAI } from "@/lib/ai";
 import { localeToLanguageName } from "@/i18n/config";
 
 export async function POST(req: Request) {
@@ -34,7 +34,7 @@ Provide structured feedback in Markdown with:
 - Critical Areas for Improvement (3 points)
 - Line-by-line / Section Rewrite Recommendations (with specific improved sentences)`;
 
-    let reviewResult = await callGemini(prompt, "You are an elite admissions essay reviewer.");
+    let reviewResult = await callAI(prompt, "You are an elite admissions essay reviewer.");
 
     if (!reviewResult) {
       const wordCount = sopText.trim().split(/\s+/).length;

@@ -582,7 +582,7 @@ export default function Home() {
               Scholarship Discovery
             </span>
             <span className="hover:text-slate-800 cursor-pointer" onClick={() => setActiveTab("chat")}>
-              Gemini Mentor
+              AI Mentor
             </span>
           </div>
         </div>

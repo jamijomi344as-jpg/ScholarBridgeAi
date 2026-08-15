@@ -150,7 +150,7 @@ export function DashboardView({
               className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-900 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all"
             >
               <Bot className="h-4 w-4" />
-              {isEvaluating ? "Analyzing Profile..." : "Run Gemini AI Audit"}
+              {isEvaluating ? "Analyzing Profile..." : "Run AI Audit"}
             </button>
           </div>
         </div>
@@ -215,13 +215,13 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* Gemini AI Evaluation Report Output Modal/Card */}
+      {/* AI Evaluation Report Output Modal/Card */}
       {aiEvaluation && (
         <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-lg space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 text-indigo-700 font-bold text-lg">
               <Bot className="h-5 w-5" />
-              ScholarBridge Gemini AI Strategic Evaluation
+              ScholarBridge AI Strategic Evaluation
             </div>
             <button
               onClick={() => setAiEvaluation(null)}

@@ -108,7 +108,7 @@ export function AiSopStudio({ activeProfile }: AiSopStudioProps) {
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200 mb-2">
             <Sparkles className="h-3.5 w-3.5" />
-            Gemini AI SOP & Application Essay Suite
+            AI SOP & Application Essay Suite
           </div>
           <h1 className="text-xl font-bold text-slate-900">Statement of Purpose & Essay Studio</h1>
           <p className="text-xs text-slate-500 mt-1">
@@ -205,7 +205,7 @@ export function AiSopStudio({ activeProfile }: AiSopStudioProps) {
                 className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50"
               >
                 <Bot className="h-4 w-4" />
-                {isDrafting ? "Drafting SOP via Gemini AI..." : "Generate 5-Paragraph SOP Draft"}
+                {isDrafting ? "Drafting SOP with AI..." : "Generate 5-Paragraph SOP Draft"}
               </button>
             </form>
           </div>
@@ -287,7 +287,7 @@ export function AiSopStudio({ activeProfile }: AiSopStudioProps) {
                 className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50"
               >
                 <Bot className="h-4 w-4" />
-                {isReviewing ? "Evaluating SOP with Gemini AI..." : "Evaluate & Diagnose Essay"}
+                {isReviewing ? "Evaluating SOP with AI..." : "Evaluate & Diagnose Essay"}
               </button>
             </form>
           </div>

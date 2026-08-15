@@ -109,7 +109,7 @@ export function Navbar({
         <div className="flex items-center gap-1.5">
           <span className="font-bold text-lg tracking-tight text-slate-900 truncate">ScholarBridge</span>
           <span className="hidden xl:inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <Sparkles className="h-2.5 w-2.5 text-indigo-600" /> Gemini AI
+            <Sparkles className="h-2.5 w-2.5 text-indigo-600" /> AI
           </span>
         </div>
         <p className="text-[10px] text-slate-500 truncate hidden sm:block">Global Admissions & Scholarship Discovery</p>

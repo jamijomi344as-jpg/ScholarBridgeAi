@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { studentProfiles, aiEvaluations } from "@/db/schema";
-import { callGemini } from "@/lib/gemini";
+import { callAI } from "@/lib/ai";
 import { eq } from "drizzle-orm";
 import { localeToLanguageName } from "@/i18n/config";
 
@@ -54,7 +54,7 @@ Make the tone encouraging, professional, precise, and practical.`;
 
     const systemInstruction = "You are ScholarBridge's senior AI Admissions Strategist. Provide structured, practical markdown evaluation with clear actionable insights.";
 
-    let evaluationResult = await callGemini(prompt, systemInstruction);
+    let evaluationResult = await callAI(prompt, systemInstruction);
 
     if (!evaluationResult) {
       // Fallback realistic AI evaluation

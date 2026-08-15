@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { studentProfiles } from "@/db/schema";
-import { callGemini } from "@/lib/gemini";
+import { callAI } from "@/lib/ai";
 import { eq } from "drizzle-orm";
 import { localeToLanguageName } from "@/i18n/config";
 
@@ -43,7 +43,7 @@ Paragraph 3: Practical Projects, Research & Professional Impact
 Paragraph 4: Why ${targetUni}? (Specific Faculty, Labs & Curriculum Fit)
 Paragraph 5: Long-Term Vision & Post-Graduation Impact`;
 
-    let sopContent = await callGemini(prompt, "You are an expert SOP editor and academic writing mentor.");
+    let sopContent = await callAI(prompt, "You are an expert SOP editor and academic writing mentor.");
 
     if (!sopContent) {
       sopContent = `**Statement of Purpose: Candidate ${profile.name}**
