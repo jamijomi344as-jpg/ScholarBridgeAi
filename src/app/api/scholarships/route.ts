@@ -42,7 +42,12 @@ export async function GET(req: Request) {
     }
 
     const results = allScholarships.map(s => {
-      let matchInfo = { matchScore: 85, isEligible: true };
+      let matchInfo: {
+        matchScore: number;
+        isEligible: boolean;
+        reasons?: string[];
+        potentialIssues?: string[];
+      } = { matchScore: 85, isEligible: true, reasons: [], potentialIssues: [] };
       if (profileData) {
         matchInfo = calculateScholarshipMatch(profileData, s);
       }
@@ -52,6 +57,8 @@ export async function GET(req: Request) {
         ...s,
         matchScore: matchInfo.matchScore,
         isEligible: matchInfo.isEligible,
+        matchReasons: matchInfo.reasons ?? [],
+        matchIssues: matchInfo.potentialIssues ?? [],
         computedStatus: statusInfo.computedStatus,
         statusLabel: statusInfo.statusLabel,
         expectedLabel: statusInfo.expectedLabel,

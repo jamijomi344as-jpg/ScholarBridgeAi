@@ -7,6 +7,8 @@ import { DashboardView } from "@/components/DashboardView";
 import { UniversityExplorer } from "@/components/UniversityExplorer";
 import { ScholarshipHub } from "@/components/ScholarshipHub";
 import { ApplicationTracker, SavedUniversityItem, SavedScholarshipItem } from "@/components/ApplicationTracker";
+import { DeadlineCenter } from "@/components/DeadlineCenter";
+import { DocumentChecklist } from "@/components/DocumentChecklist";
 import { AiSopStudio } from "@/components/AiSopStudio";
 import { TaskRoadmap } from "@/components/TaskRoadmap";
 import { AiChatMentor } from "@/components/AiChatMentor";
@@ -533,6 +535,17 @@ export default function Home() {
             onUpgrade={() => setActiveTab("payments")}
           >
             <TaskRoadmap activeProfile={activeProfile} />
+          </PremiumGate>
+        )}
+
+        {activeTab === "deadlines" && (
+          <PremiumGate
+            profileId={activeProfile?.id ?? null}
+            title="Deadline Center is Premium"
+            description="Track every scholarship, university and milestone deadline in one timeline — an exclusive Premium feature."
+            onUpgrade={() => setActiveTab("payments")}
+          >
+            <DeadlineCenter profileId={activeProfile?.id ?? null} />
           </PremiumGate>
         )}
 

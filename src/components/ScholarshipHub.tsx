@@ -13,7 +13,8 @@ import {
   Check, 
   Sparkles,
   BookOpen,
-  Filter
+  Filter,
+  AlertCircle
 } from "lucide-react";
 
 export interface Scholarship {
@@ -35,6 +36,9 @@ export interface Scholarship {
   websiteUrl: string;
   matchScore?: number;
   isEligible?: boolean;
+  // Why this match (spec §22)
+  matchReasons?: string[];
+  matchIssues?: string[];
   // Computed application status (spec §6)
   computedStatus?: string;
   statusLabel?: string;
@@ -192,6 +196,24 @@ export function ScholarshipHub({
                       {score}% Eligibility
                     </span>
                   </div>
+
+                  {/* Why this match (spec §22) */}
+                  {(s.matchReasons?.length || s.matchIssues?.length) && (
+                    <div className="mt-2 space-y-1">
+                      {s.matchReasons?.map((r, i) => (
+                        <p key={`r${i}`} className="text-[10px] text-emerald-700 flex items-start gap-1">
+                          <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0" />
+                          <span><b>Strong match because</b> {r}</span>
+                        </p>
+                      ))}
+                      {s.matchIssues?.map((r, i) => (
+                        <p key={`p${i}`} className="text-[10px] text-amber-700 flex items-start gap-1">
+                          <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                          <span><b>Potential issue:</b> {r}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Computed application status (spec §6) */}
                   {s.computedStatus && (

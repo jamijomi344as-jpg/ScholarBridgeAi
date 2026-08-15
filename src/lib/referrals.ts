@@ -2,6 +2,7 @@ import { eq, and, desc, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { referrals, studentProfiles } from "@/db/schema";
 import { generateReferralCode, awardPoints, computeProfileCompleteness } from "@/lib/gamification";
+import { getConfigNumber } from "@/lib/config";
 
 export const REFERRAL_LINK_BASE =
   process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridge-qhvw.onrender.com";
@@ -248,7 +249,9 @@ export async function grantReferralReward(referrerId: number) {
       const base = premiumUntil && new Date(premiumUntil).getTime() > now.getTime()
         ? new Date(premiumUntil)
         : now;
-      premiumUntil = new Date(base.getTime() + REFERRAL_PREMIUM_DAYS * 86400000);
+      // Config-driven premium days (spec §3).
+      const rewardDays = await getConfigNumber("referral_premium_days", REFERRAL_PREMIUM_DAYS);
+      premiumUntil = new Date(base.getTime() + rewardDays * 86400000);
       isPremium = true;
     }
 

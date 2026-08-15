@@ -130,19 +130,33 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
 
 export function calculateScholarshipMatch(profile: StudentProfileData, scholarship: ScholarshipData) {
   let score = 65;
+  const reasons: string[] = [];
+  const potentialIssues: string[] = [];
 
-  // GPA check
+  // GPA check (spec §22 — explain WHY it matches)
   const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
   if (scholarship.minGpa) {
-    if (normGpa >= scholarship.minGpa + 0.4) score += 15;
-    else if (normGpa >= scholarship.minGpa) score += 8;
-    else score -= 20;
+    if (normGpa >= scholarship.minGpa + 0.4) {
+      score += 15;
+      reasons.push(`GPA ${normGpa.toFixed(2)} well above the ${scholarship.minGpa} minimum`);
+    } else if (normGpa >= scholarship.minGpa) {
+      score += 8;
+      reasons.push(`GPA ${normGpa.toFixed(2)} meets the ${scholarship.minGpa} minimum`);
+    } else {
+      score -= 20;
+      potentialIssues.push(`GPA ${normGpa.toFixed(2)} is below the ${scholarship.minGpa} requirement`);
+    }
   }
 
   // IELTS check
   if (scholarship.minIelts && profile.ieltsScore) {
-    if (profile.ieltsScore >= scholarship.minIelts) score += 10;
-    else score -= 15;
+    if (profile.ieltsScore >= scholarship.minIelts) {
+      score += 10;
+      reasons.push(`IELTS ${profile.ieltsScore} meets the ${scholarship.minIelts} requirement`);
+    } else {
+      score -= 15;
+      potentialIssues.push(`IELTS ${profile.ieltsScore} is below the ${scholarship.minIelts} minimum`);
+    }
   }
 
   // Degree Level alignment
@@ -150,8 +164,30 @@ export function calculateScholarshipMatch(profile: StudentProfileData, scholarsh
     const levels: string[] = JSON.parse(scholarship.degreeLevels);
     if (levels.includes("All") || levels.some(l => l.toLowerCase() === profile.degreeLevel.toLowerCase())) {
       score += 10;
+      reasons.push(`Open to ${profile.degreeLevel} applicants`);
     } else {
       score -= 25;
+      potentialIssues.push(`Only open to: ${levels.join(", ")}`);
+    }
+  } catch {
+    // fallback
+  }
+
+  // Eligible majors (spec §22)
+  try {
+    const majors: string[] = JSON.parse(scholarship.eligibleMajors || "[]");
+    if (majors.length && !majors.includes("All")) {
+      const matchMajor = majors.some((m) =>
+        m.toLowerCase().includes(profile.targetMajor.toLowerCase().split(" ")[0]) ||
+        profile.targetMajor.toLowerCase().includes(m.toLowerCase())
+      );
+      if (matchMajor) {
+        score += 8;
+        reasons.push(`Your field (${profile.targetMajor}) is eligible`);
+      } else {
+        score -= 10;
+        potentialIssues.push(`Field limited to: ${majors.join(", ")}`);
+      }
     }
   } catch {
     // fallback
@@ -160,17 +196,19 @@ export function calculateScholarshipMatch(profile: StudentProfileData, scholarsh
   // Need based vs profile budget
   if (scholarship.financialNeedBased && profile.needScholarship) {
     score += 10;
+    reasons.push("Need-based — matches your scholarship requirement");
   }
 
   // Merit based vs GPA & Publications
   if (scholarship.meritBased) {
     if (normGpa >= 3.6 || (profile.researchPublications || 0) > 0) {
       score += 10;
+      reasons.push("Merit-based — strong academic record / publications");
     }
   }
 
   const matchScore = Math.min(98, Math.max(30, Math.round(score)));
   const isEligible = matchScore >= 60;
 
-  return { matchScore, isEligible };
+  return { matchScore, isEligible, reasons: reasons.slice(0, 4), potentialIssues: potentialIssues.slice(0, 3) };
 }

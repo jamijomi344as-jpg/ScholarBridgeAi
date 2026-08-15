@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { payments } from "@/db/schema";
 import {
-  PREMIUM_PRICE_UZS,
+  getPremiumPriceUzs,
   PREMIUM_CURRENCY,
   paymeConfig,
   clickConfig,
@@ -20,13 +20,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "provider must be 'payme' or 'click'" }, { status: 400 });
     }
 
+    // Price from app_config (spec §3, §18 — no hardcoded amounts).
+    const priceUzs = await getPremiumPriceUzs();
+
     const [payment] = await db
       .insert(payments)
       .values({
         profileId: Number(profileId),
         provider,
         providerTransactionId: "",
-        amount: PREMIUM_PRICE_UZS,
+        amount: priceUzs,
         currency: PREMIUM_CURRENCY,
         status: "pending",
         purpose: "premium",
@@ -42,15 +45,15 @@ export async function POST(req: Request) {
         service_id: cfg.serviceId,
         merchant_id: cfg.merchantId,
         merchant_user_id: cfg.merchantUserId,
-        amount: PREMIUM_PRICE_UZS,
+        amount: priceUzs,
         transaction_param: payment.id,
       };
-      checkoutUrl = `https://my.click.uz/services/pay?service_id=${cfg.serviceId}&merchant_id=${cfg.merchantId}&amount=${PREMIUM_PRICE_UZS}&transaction_param=${payment.id}&merchant_user_id=${cfg.merchantUserId}`;
+      checkoutUrl = `https://my.click.uz/services/pay?service_id=${cfg.serviceId}&merchant_id=${cfg.merchantId}&amount=${priceUzs}&transaction_param=${payment.id}&merchant_user_id=${cfg.merchantUserId}`;
     } else {
       const cfg = paymeConfig();
       params = {
         merchant: cfg.merchantId,
-        amount: PREMIUM_PRICE_UZS * 100, // tiyn
+        amount: priceUzs * 100, // tiyn
         account: { profile_id: payment.profileId },
       };
       checkoutUrl = `https://checkout.payme.uz/${cfg.merchantId}`;
@@ -60,7 +63,7 @@ export async function POST(req: Request) {
       payment,
       checkoutUrl,
       params,
-      amount: PREMIUM_PRICE_UZS,
+      amount: priceUzs,
       currency: PREMIUM_CURRENCY,
       purpose: "premium",
     });

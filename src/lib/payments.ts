@@ -2,10 +2,23 @@ import { createHash } from "crypto";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/db";
 import { payments, subscriptions, studentProfiles } from "@/db/schema";
+import { getConfigNumber } from "@/lib/config";
 
+// Sync fallbacks (kept for backward compatibility) — the real values come
+// from app_config (spec §3: no hardcoded business values).
 export const PREMIUM_PRICE_UZS = 59000;
 export const PREMIUM_CURRENCY = "UZS";
 export const PREMIUM_PERIOD_DAYS = 30;
+
+/** Config-driven premium price (UZS). */
+export async function getPremiumPriceUzs(): Promise<number> {
+  return getConfigNumber("payment_premium_price_uzs", PREMIUM_PRICE_UZS);
+}
+
+/** Config-driven premium period (days). */
+export async function getPremiumPeriodDays(): Promise<number> {
+  return getConfigNumber("payment_premium_days", PREMIUM_PERIOD_DAYS);
+}
 
 // ---------------------------------------------------------------------------
 // Config helpers
@@ -59,7 +72,8 @@ export async function activateSubscription(paymentId: number, profileId: number 
   }
 
   const now = new Date();
-  const periodEnd = new Date(now.getTime() + PREMIUM_PERIOD_DAYS * 86400000);
+  const periodDays = await getPremiumPeriodDays();
+  const periodEnd = new Date(now.getTime() + periodDays * 86400000);
 
   await db
     .update(payments)
@@ -166,7 +180,8 @@ export async function handlePaymeRequest(body: PaymeRequest) {
       return { id, ...paymeError(-31003, "Profile not found") };
     }
     const amountUzs = amount / 100;
-    if (amountUzs !== PREMIUM_PRICE_UZS) {
+    const priceUzs = await getPremiumPriceUzs();
+    if (amountUzs !== priceUzs) {
       return { id, ...paymeError(-31001, "Invalid amount") };
     }
     return {
