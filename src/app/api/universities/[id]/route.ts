@@ -6,6 +6,7 @@ import {
   programRequirements,
   applicationCycles,
   universitySources,
+  sources,
   campuses,
   universityImages,
   scholarships,
@@ -13,9 +14,9 @@ import {
 import { eq, asc } from "drizzle-orm";
 
 /**
- * University detail API (spec §2-§13).
+ * University detail API (spec §2-§14).
  * Returns the university plus all related verified data.
- * Missing data stays null — the UI shows "Not available".
+ * Missing data stays null — the UI shows "Not available" / "Not specified".
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,13 +28,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: "University not found" }, { status: 404 });
     }
 
+    // Programs + their requirements.
     const programs = await db
       .select()
       .from(universityPrograms)
       .where(eq(universityPrograms.universityId, uniId))
       .orderBy(asc(universityPrograms.name));
 
-    // Program requirements grouped by program.
     const programReqs: Record<number, typeof programRequirements.$inferSelect[]> = {};
     for (const p of programs) {
       const reqs = await db
@@ -43,16 +44,35 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       programReqs[p.id] = reqs;
     }
 
+    // Application cycles (spec §2 — multiple rows per university allowed).
     const cycles = await db
       .select()
       .from(applicationCycles)
       .where(eq(applicationCycles.universityId, uniId))
       .orderBy(asc(applicationCycles.cycleYear));
 
-    const sources = await db
+    // Sources: university_sources + linked sources table.
+    const uniSourceRows = await db
       .select()
       .from(universitySources)
       .where(eq(universitySources.universityId, uniId));
+    const sourceIds = uniSourceRows.map((r) => r.sourceId).filter((x): x is number => x != null);
+    const sourceMap = new Map<number, typeof sources.$inferSelect>();
+    if (sourceIds.length) {
+      const srcRows = await db.select().from(sources);
+      srcRows.forEach((s) => sourceMap.set(s.id, s));
+    }
+    const uniSources = uniSourceRows.map((r) => ({
+      ...r,
+      source: r.sourceId != null ? sourceMap.get(r.sourceId) ?? null : null,
+    }));
+
+    // Scholarships linked to this university (spec §8).
+    const uniScholarships = await db
+      .select()
+      .from(scholarships)
+      .where(eq(scholarships.universityId, uniId))
+      .orderBy(asc(scholarships.title));
 
     const campusRows = await db
       .select()
@@ -68,7 +88,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       university: uni,
       programs: programs.map((p) => ({ ...p, requirements: programReqs[p.id] || [] })),
       cycles,
-      sources,
+      sources: uniSources,
+      scholarships: uniScholarships,
       campuses: campusRows,
       images,
     });

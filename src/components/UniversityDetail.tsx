@@ -16,6 +16,8 @@ import {
   Building2,
   Star,
   ShieldCheck,
+  Award,
+  ArrowRight,
 } from "lucide-react";
 
 interface UniversityDetailData {
@@ -59,14 +61,51 @@ interface ProgramData {
   field: string | null;
   degree: string | null;
   durationYears: number | null;
+  durationUnit: string;
+  studyMode: string | null;
   language: string | null;
   tuitionAmount: number | null;
   tuitionCurrency: string;
+  tuitionPeriod: string;
   applicationDeadline: string | null;
   minIelts: number | null;
   minSat: number | null;
   programUrl: string | null;
-  requirements: { requirementType: string; minimumValue: number | null; valueText: string | null }[];
+  applicationUrl: string | null;
+  isVerified: boolean;
+  requirements: { requirementType: string; minimumValue: number | null; valueText: string | null; portfolioRequired: boolean; interviewRequired: boolean; recommendationRequired: boolean; personalStatementRequired: boolean }[];
+}
+
+interface CycleData {
+  id: number;
+  cycleYear: number;
+  academicYear: string | null;
+  intake: string | null;
+  applicationType: string | null;
+  openingDate: string | null;
+  deadline: string | null;
+  deadlineTimezone: string | null;
+  applicationFee: number | null;
+  applicationFeeCurrency: string;
+  applicationUrl: string | null;
+  isVerified: boolean;
+  isEstimated: boolean;
+}
+
+interface ScholarshipData {
+  id: number;
+  title: string;
+  name?: string;
+  description: string | null;
+  degreeLevels: string | null;
+  coverageType: string | null;
+  amountUsdValue: number | null;
+  deadline: string | null;
+  deadlineDate: string | null;
+  applicationUrl: string | null;
+  websiteUrl: string | null;
+  isVerified: boolean;
+  eligibilityText?: string;
 }
 
 interface SourceData {
@@ -74,6 +113,7 @@ interface SourceData {
   title: string;
   url: string;
   sourceType: string;
+  source: { url: string; title: string; isOfficial: boolean; isVerified: boolean } | null;
 }
 
 interface UniversityDetailProps {
@@ -110,6 +150,8 @@ function Field({ label, value, icon }: { label: string; value: string; icon?: Re
 export function UniversityDetail({ universityId, onBack }: UniversityDetailProps) {
   const [uni, setUni] = useState<UniversityDetailData | null>(null);
   const [programs, setPrograms] = useState<ProgramData[]>([]);
+  const [cycles, setCycles] = useState<CycleData[]>([]);
+  const [scholarships, setScholarships] = useState<ScholarshipData[]>([]);
   const [sources, setSources] = useState<SourceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -126,6 +168,8 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         if (!cancelled) {
           setUni(data.university);
           setPrograms(data.programs || []);
+          setCycles(data.cycles || []);
+          setScholarships(data.scholarships || []);
           setSources(data.sources || []);
         }
       } catch (err: any) {
@@ -230,6 +274,99 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         </div>
       </div>
 
+      {/* ===== ADMISSIONS / APPLICATION CYCLES (spec §2, §3, §12) ===== */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <FileText className="h-4 w-4 text-amber-600" /> Application
+        </h2>
+        {cycles.length === 0 ? (
+          <div className="mt-3">
+            <p className="text-xs text-slate-400">No verified application cycles yet.</p>
+            {uni.internationalUrl && (
+              <a
+                href={uni.internationalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-900 px-4 py-2 text-xs font-bold hover:bg-amber-300"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Apply (International)
+              </a>
+            )}
+            {!uni.internationalUrl && uni.websiteUrl && (
+              <a
+                href={uni.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                <Globe className="h-3.5 w-3.5" /> Visit official website
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {cycles.map((c) => (
+              <div key={c.id} className="rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-extrabold text-slate-800">
+                    {c.intake || "Application"} {c.academicYear || c.cycleYear}
+                  </span>
+                  {c.applicationType && (
+                    <span className="rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                      {c.applicationType}
+                    </span>
+                  )}
+                  {c.isEstimated && (
+                    <span className="rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-bold">
+                      Estimated
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block">Opens</span>
+                    <strong className="text-slate-800">
+                      {c.openingDate ? new Date(c.openingDate + "T00:00:00").toLocaleDateString() : "Not announced"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Deadline</span>
+                    <strong className="text-slate-800">
+                      {c.deadline ? new Date(c.deadline + "T00:00:00").toLocaleDateString() : "Not announced"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Application fee</span>
+                    <strong className="text-slate-800">
+                      {c.applicationFee != null
+                        ? c.applicationFeeCurrency === "USD"
+                          ? `$${c.applicationFee.toLocaleString()}`
+                          : `${c.applicationFee} ${c.applicationFeeCurrency}`
+                        : "Not specified"}
+                    </strong>
+                  </div>
+                  <div className="flex items-end justify-end">
+                    {/* APPLY NOW — only with a verified URL (spec §19) */}
+                    {c.applicationUrl ? (
+                      <a
+                        href={c.applicationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-xl bg-slate-900 text-white px-3.5 py-2 text-[11px] font-bold hover:bg-slate-800"
+                      >
+                        Apply Now <ArrowRight className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Application link unavailable</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ===== ABOUT (spec §3) ===== */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -260,7 +397,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           <Field label="Minimum ACT" value={uni.minAct != null ? `${uni.minAct}` : "Not specified"} />
         </div>
         <p className="mt-3 text-[11px] text-slate-400 italic">
-          Only officially verified minimums are shown. If a value is not specified by the university, it is marked "Not specified".
+          Only officially verified minimums are shown. If a value is not specified by the university, it is marked &quot;Not specified&quot;.
         </p>
       </div>
 
@@ -311,6 +448,47 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         )}
       </div>
 
+      {/* ===== SCHOLARSHIPS (spec §8) ===== */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+          <Award className="h-4 w-4 text-amber-500" /> Scholarships ({scholarships.length})
+        </h2>
+        {scholarships.length === 0 ? (
+          <p className="mt-3 text-xs text-slate-400">
+            No verified scholarships linked to this university yet — check the official website.
+          </p>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {scholarships.map((sch) => {
+              const schName = sch.name || sch.title;
+              const deadline = sch.deadlineDate || sch.deadline || null;
+              const url = sch.applicationUrl || sch.websiteUrl || null;
+              return (
+                <div key={sch.id} className="rounded-xl border border-slate-200 p-4 hover:border-amber-300 transition-colors">
+                  <p className="text-sm font-extrabold text-slate-800">{schName}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{sch.coverageType || "Coverage not specified"}</p>
+                  <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                    <p><b>Amount:</b> {sch.amountUsdValue != null ? `$${sch.amountUsdValue.toLocaleString()}` : "Not specified"}</p>
+                    <p><b>Deadline:</b> {deadline ? new Date(deadline + (deadline.length === 10 ? "T00:00:00" : "")).toLocaleDateString() : "Not announced"}</p>
+                    <p><b>Eligibility:</b> {sch.eligibilityText || "Not specified"}</p>
+                  </div>
+                  {url && (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Official Scholarship Page
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ===== POST-STUDY (spec §11) ===== */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -356,6 +534,11 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           {sources.map((s) => (
             <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:underline">
               <ExternalLink className="h-3 w-3" /> {s.title}
+              {(s.source?.isOfficial || s.sourceType !== "ranking") && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+                  <CheckCircle2 className="h-2.5 w-2.5" /> Official source
+                </span>
+              )}
             </a>
           ))}
           {sources.length === 0 && (
