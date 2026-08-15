@@ -22,6 +22,7 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { NotificationBell } from "./NotificationBell";
 
 export interface StudentProfile {
   id: number;
@@ -59,6 +60,7 @@ interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   activeProfile: StudentProfile | null;
+  activeProfileId?: number | null;
   onOpenProfileModal: (isNew?: boolean) => void;
   onSwitchProfile?: () => void;
   onStartOnboarding?: () => void;
@@ -70,6 +72,7 @@ export function Navbar({
   activeTab,
   setActiveTab,
   activeProfile,
+  activeProfileId,
   onOpenProfileModal,
   onSwitchProfile,
   onStartOnboarding,
@@ -207,7 +210,10 @@ export function Navbar({
         {/* Bottom: profile switcher + actions */}
         <div className="px-4 py-4 border-t border-slate-100 space-y-2.5">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1">Student profile</p>
-          {ProfileChip}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 min-w-0">{ProfileChip}</div>
+            <NotificationBell profileId={activeProfileId ?? null} />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => onOpenProfileModal(false)}
@@ -257,6 +263,7 @@ export function Navbar({
             </button>
 
             <div className="flex items-center gap-1.5 shrink-0">
+              <NotificationBell profileId={activeProfileId ?? null} />
               <LanguageSwitcher onLocaleChange={onLocaleChange} />
               <button
                 onClick={onSwitchProfile}

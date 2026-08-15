@@ -33,6 +33,17 @@ interface ScholarshipRow {
   description: string;
   requirements: string;
   websiteUrl: string;
+  // Dynamic lifecycle (spec §4)
+  deadlineType?: string;
+  deadlineDate?: string | null;
+  openingDate?: string | null;
+  recurrence?: string;
+  expectedDeadlinePeriod?: string | null;
+  applicationUrl?: string | null;
+  sourceUrl?: string | null;
+  verificationStatus?: string;
+  eligibleCountries?: string;
+  requiredDocuments?: string;
 }
 
 interface ScholarshipForm {
@@ -51,6 +62,17 @@ interface ScholarshipForm {
   description: string;
   requirements: string;
   websiteUrl: string;
+  // Dynamic lifecycle (spec §4)
+  deadlineType: string;
+  deadlineDate: string;
+  openingDate: string;
+  recurrence: string;
+  expectedDeadlinePeriod: string;
+  applicationUrl: string;
+  sourceUrl: string;
+  verificationStatus: string;
+  eligibleCountries: string;
+  requiredDocuments: string;
 }
 
 const emptyForm: ScholarshipForm = {
@@ -69,6 +91,16 @@ const emptyForm: ScholarshipForm = {
   description: "",
   requirements: "",
   websiteUrl: "",
+  deadlineType: "unknown",
+  deadlineDate: "",
+  openingDate: "",
+  recurrence: "none",
+  expectedDeadlinePeriod: "",
+  applicationUrl: "",
+  sourceUrl: "",
+  verificationStatus: "unverified",
+  eligibleCountries: "[]",
+  requiredDocuments: "[]",
 };
 
 const inputCls =
@@ -122,6 +154,16 @@ export function ScholarshipsManager({ adminProfileId }: ScholarshipsManagerProps
       description: s.description,
       requirements: s.requirements,
       websiteUrl: s.websiteUrl,
+      deadlineType: s.deadlineType || "unknown",
+      deadlineDate: s.deadlineDate ? String(s.deadlineDate).slice(0, 10) : "",
+      openingDate: s.openingDate ? String(s.openingDate).slice(0, 10) : "",
+      recurrence: s.recurrence || "none",
+      expectedDeadlinePeriod: s.expectedDeadlinePeriod || "",
+      applicationUrl: s.applicationUrl || "",
+      sourceUrl: s.sourceUrl || "",
+      verificationStatus: s.verificationStatus || "unverified",
+      eligibleCountries: s.eligibleCountries || "[]",
+      requiredDocuments: s.requiredDocuments || "[]",
     });
     setError("");
     setSuccess("");
@@ -193,6 +235,17 @@ export function ScholarshipsManager({ adminProfileId }: ScholarshipsManagerProps
     { key: "minGpa", label: "Min GPA (optional)", type: "number" },
     { key: "minIelts", label: "Min IELTS (optional)", type: "number" },
     { key: "websiteUrl", label: "Website URL", full: true },
+    // Dynamic lifecycle (spec §4)
+    { key: "deadlineType", label: "Deadline Type", placeholder: "exact | range | rolling | not_announced | recurring | unknown" },
+    { key: "deadlineDate", label: "Exact Deadline (date)", type: "date" },
+    { key: "openingDate", label: "Opening Date (date)", type: "date" },
+    { key: "recurrence", label: "Recurrence", placeholder: "none | annual" },
+    { key: "expectedDeadlinePeriod", label: "Expected Deadline Period", placeholder: "e.g. October-December (from previous cycles)" },
+    { key: "applicationUrl", label: "Application URL", full: true },
+    { key: "sourceUrl", label: "Official Source URL", full: true },
+    { key: "verificationStatus", label: "Verification Status", placeholder: "unverified | verified | needs_verification | recently_verified" },
+    { key: "eligibleCountries", label: "Eligible Countries (JSON)", placeholder: '["All"]' },
+    { key: "requiredDocuments", label: "Required Documents (JSON)", placeholder: '["transcript","recommendation_letter"]' },
   ];
 
   return (

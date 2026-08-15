@@ -140,6 +140,26 @@ export default function Home() {
           setActiveProfile(data.profile);
           rememberProfile(storedId);
           setView("app");
+          // Fire-and-forget: check for approaching deadlines → notifications.
+          try {
+            fetch("/api/notifications/sweep", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ profileId: storedId }),
+            }).catch(() => {});
+          } catch {
+            // ignore
+          }
+          // Fire-and-forget: auto-build the personalized roadmap.
+          try {
+            fetch("/api/roadmap/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ profileId: storedId }),
+            }).catch(() => {});
+          } catch {
+            // ignore
+          }
           return;
         }
       }
@@ -454,6 +474,7 @@ export default function Home() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         activeProfile={activeProfile}
+        activeProfileId={activeProfile?.id ?? null}
         onOpenProfileModal={(isNew) => {
           setIsNewProfile(!!isNew);
           setIsProfileModalOpen(true);
