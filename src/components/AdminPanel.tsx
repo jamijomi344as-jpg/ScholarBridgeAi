@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldCheck, Building2, Video, Award, Gift, History, Settings2, RefreshCw, BadgeCheck } from "lucide-react";
+import { ShieldCheck, Building2, Video, Award, Gift, History, Settings2, RefreshCw, BadgeCheck, Headset } from "lucide-react";
 import { StudentProfile } from "./Navbar";
 import { UniversitiesManager } from "./admin/UniversitiesManager";
 import { CoursesManager } from "./admin/CoursesManager";
@@ -11,12 +11,13 @@ import { AuditLogViewer } from "./admin/AuditLogViewer";
 import { ConfigManager } from "./admin/ConfigManager";
 import { RefreshCenter } from "./admin/RefreshCenter";
 import { VerificationManager } from "./admin/VerificationManager";
+import { ConsultingManager } from "./admin/ConsultingManager";
 
 interface AdminPanelProps {
   activeProfile: StudentProfile | null;
 }
 
-type AdminTab = "universities" | "courses" | "scholarships" | "premium" | "audit" | "refresh" | "config" | "verify";
+type AdminTab = "universities" | "courses" | "scholarships" | "premium" | "audit" | "refresh" | "config" | "verify" | "consulting";
 
 export function AdminPanel({ activeProfile }: AdminPanelProps) {
   const [tab, setTab] = useState<AdminTab>("universities");
@@ -32,6 +33,7 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
     { id: "premium", label: "Premium Gifts", icon: <Gift className="h-4 w-4" /> },
     { id: "audit", label: "Audit Log", icon: <History className="h-4 w-4" /> },
     { id: "verify", label: "Verification", icon: <BadgeCheck className="h-4 w-4" /> },
+    { id: "consulting", label: "Consulting", icon: <Headset className="h-4 w-4" /> },
     { id: "refresh", label: "Data Refresh", icon: <RefreshCw className="h-4 w-4" /> },
     { id: "config", label: "Settings", icon: <Settings2 className="h-4 w-4" /> },
   ];
@@ -73,6 +75,7 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
       {tab === "refresh" && <RefreshCenter adminProfileId={activeProfile.id} />}
       {tab === "config" && <ConfigManager adminProfileId={activeProfile.id} />}
       {tab === "verify" && <VerificationManager adminProfileId={activeProfile.id} />}
+      {tab === "consulting" && <ConsultingManager adminProfileId={activeProfile.id} />}
     </div>
   );
 }

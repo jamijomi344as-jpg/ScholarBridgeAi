@@ -136,6 +136,10 @@ export async function POST(req: Request) {
         level: courseDef.level || "Beginner",
         thumbnailUrl: courseDef.thumbnailUrl || "",
         isPublished: courseDef.isPublished == null ? true : toBool(courseDef.isPublished),
+        categoryId: courseDef.categoryId ? Number(courseDef.categoryId) : null,
+        instructorId: courseDef.instructorId ? Number(courseDef.instructorId) : null,
+        studentExperience: courseDef.studentExperience || "",
+        durationTotalSeconds: Number(courseDef.durationTotalSeconds) || 0,
       })
       .returning();
 
@@ -229,6 +233,10 @@ export async function PATCH(req: Request) {
         level: courseDef.level || existing.level,
         thumbnailUrl: courseDef.thumbnailUrl ?? existing.thumbnailUrl,
         isPublished: courseDef.isPublished == null ? existing.isPublished : toBool(courseDef.isPublished),
+        categoryId: courseDef.categoryId !== undefined ? (courseDef.categoryId ? Number(courseDef.categoryId) : null) : existing.categoryId,
+        instructorId: courseDef.instructorId !== undefined ? (courseDef.instructorId ? Number(courseDef.instructorId) : null) : existing.instructorId,
+        studentExperience: courseDef.studentExperience ?? existing.studentExperience,
+        durationTotalSeconds: courseDef.durationTotalSeconds !== undefined ? Number(courseDef.durationTotalSeconds) : existing.durationTotalSeconds,
       })
       .where(eq(courses.id, id))
       .returning();

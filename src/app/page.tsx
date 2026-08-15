@@ -9,6 +9,7 @@ import { ScholarshipHub } from "@/components/ScholarshipHub";
 import { ApplicationTracker, SavedUniversityItem, SavedScholarshipItem } from "@/components/ApplicationTracker";
 import { DeadlineCenter } from "@/components/DeadlineCenter";
 import { DocumentChecklist } from "@/components/DocumentChecklist";
+import { ConsultingSection } from "@/components/ConsultingSection";
 import { AiSopStudio } from "@/components/AiSopStudio";
 import { TaskRoadmap } from "@/components/TaskRoadmap";
 import { AiChatMentor } from "@/components/AiChatMentor";
@@ -597,6 +598,8 @@ export default function Home() {
         {activeTab === "payments" && <PaymentsSection activeProfile={activeProfile} />}
 
         {activeTab === "rewards" && <RewardsSection activeProfile={activeProfile} />}
+
+        {activeTab === "consulting" && <ConsultingSection activeProfile={activeProfile} />}
 
         {activeTab === "admin" && <AdminPanel activeProfile={activeProfile} />}
 

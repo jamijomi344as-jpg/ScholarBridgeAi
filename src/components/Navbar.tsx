@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   LogOut,
   CalendarClock,
+  Headset,
 } from "lucide-react";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NotificationBell } from "./NotificationBell";
@@ -92,6 +93,7 @@ export function Navbar({
     { id: "courses", label: "Courses", icon: Video, premium: true },
     { id: "payments", label: "Premium", icon: Crown },
     { id: "rewards", label: "Rewards & Referrals", icon: Gift },
+    { id: "consulting", label: "Consulting", icon: Headset },
   ];
 
   // Admin sees an extra management tab.

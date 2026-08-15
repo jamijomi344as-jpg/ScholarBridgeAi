@@ -217,6 +217,11 @@ export const courses = pgTable("courses", {
   level: text("level").notNull().default("Beginner"),
   thumbnailUrl: text("thumbnail_url").notNull().default(""),
   isPublished: boolean("is_published").notNull().default(true),
+  // --- Video platform expansion (spec §26) ---
+  categoryId: integer("category_id").references((): AnyPgColumn => courseCategories.id, { onDelete: "set null" }),
+  instructorId: integer("instructor_id").references((): AnyPgColumn => instructors.id, { onDelete: "set null" }),
+  studentExperience: text("student_experience").notNull().default(""),
+  durationTotalSeconds: integer("duration_total_seconds").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -457,6 +462,61 @@ export const applicationDocuments = pgTable("application_documents", {
   status: text("status").notNull().default("missing"), // missing | uploaded | not_required
   fileUrl: text("file_url"),
   deadlineDate: date("deadline_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 9. EDUCATIONAL VIDEO PLATFORM (spec §26)
+// ---------------------------------------------------------------------------
+
+/** Course instructors (real students who share their experience). */
+export const instructors = pgTable("instructors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  bio: text("bio").notNull().default(""),
+  photoUrl: text("photo_url"),
+  university: text("university"),
+  program: text("program"),
+  country: text("country"),
+  scholarshipName: text("scholarship_name"),
+  isVerifiedStudent: boolean("is_verified_student").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Course categories. */
+export const courseCategories = pgTable("course_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+/** Course progress history for certificates (spec §26). */
+export const courseEnrollments = pgTable("course_enrollments", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
+  courseId: integer("course_id").references(() => courses.id, { onDelete: "cascade" }).notNull(),
+  progressPct: integer("progress_pct").notNull().default(0),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedAt: timestamp("completed_at"),
+  enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 10. CONSULTING (spec §27)
+// ---------------------------------------------------------------------------
+export const consultingRequests = pgTable("consulting_requests", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
+  topic: text("topic").notNull(),
+  message: text("message").notNull().default(""),
+  preferredContact: text("preferred_contact").notNull().default(""),
+  status: text("status").notNull().default("new"), // new | in_review | scheduled | completed | declined
+  adminNotes: text("admin_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

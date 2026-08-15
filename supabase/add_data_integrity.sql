@@ -154,3 +154,59 @@ SET deadline_date = NULLIF(deadline, '')::date,
     source_url = website_url,
     verification_status = 'unverified'
 WHERE deadline_date IS NULL AND NULLIF(deadline, '') IS NOT NULL;
+
+-- ============================================================================
+-- PART 2 — Video platform (§26) + Consulting (§27)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS instructors (
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  bio text NOT NULL DEFAULT '',
+  photo_url text,
+  university text,
+  program text,
+  country text,
+  scholarship_name text,
+  is_verified_student boolean NOT NULL DEFAULT false,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS course_categories (
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  slug text NOT NULL UNIQUE,
+  description text NOT NULL DEFAULT '',
+  sort_order integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS course_enrollments (
+  id serial PRIMARY KEY,
+  profile_id integer REFERENCES student_profiles(id) ON DELETE CASCADE NOT NULL,
+  course_id integer REFERENCES courses(id) ON DELETE CASCADE NOT NULL,
+  progress_pct integer NOT NULL DEFAULT 0,
+  is_completed boolean NOT NULL DEFAULT false,
+  completed_at timestamp,
+  enrolled_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS consulting_requests (
+  id serial PRIMARY KEY,
+  profile_id integer REFERENCES student_profiles(id) ON DELETE CASCADE NOT NULL,
+  topic text NOT NULL,
+  message text NOT NULL DEFAULT '',
+  preferred_contact text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'new',
+  admin_notes text,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+
+-- courses table expansion
+ALTER TABLE courses
+  ADD COLUMN IF NOT EXISTS category_id integer REFERENCES course_categories(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS instructor_id integer REFERENCES instructors(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS student_experience text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS duration_total_seconds integer NOT NULL DEFAULT 0;

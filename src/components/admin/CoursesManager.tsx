@@ -68,6 +68,9 @@ interface CourseDraft {
   level: string;
   thumbnailUrl: string;
   isPublished: boolean;
+  categoryId: string;
+  instructorId: string;
+  studentExperience: string;
   modules: ModuleDraft[];
 }
 
@@ -105,6 +108,9 @@ const emptyCourse = (): CourseDraft => ({
   level: "Beginner",
   thumbnailUrl: "",
   isPublished: true,
+  categoryId: "",
+  instructorId: "",
+  studentExperience: "",
   modules: [],
 });
 
@@ -165,6 +171,9 @@ export function CoursesManager({ adminProfileId }: CoursesManagerProps) {
         level: course.level,
         thumbnailUrl: course.thumbnailUrl,
         isPublished: course.isPublished,
+        categoryId: course.categoryId ? String(course.categoryId) : "",
+        instructorId: course.instructorId ? String(course.instructorId) : "",
+        studentExperience: course.studentExperience || "",
         modules: (course.modules || []).map((m: any) => ({
           title: m.title,
           description: m.description,
@@ -382,6 +391,9 @@ export function CoursesManager({ adminProfileId }: CoursesManagerProps) {
         level: draft.level,
         thumbnailUrl: draft.thumbnailUrl,
         isPublished: draft.isPublished,
+        categoryId: draft.categoryId ? Number(draft.categoryId) : null,
+        instructorId: draft.instructorId ? Number(draft.instructorId) : null,
+        studentExperience: draft.studentExperience,
       };
 
       if (draft.id == null) {
@@ -662,6 +674,34 @@ export function CoursesManager({ adminProfileId }: CoursesManagerProps) {
               <option>Intermediate</option>
               <option>Advanced</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Category ID (video platform)</label>
+            <input
+              value={draft.categoryId}
+              onChange={(e) => updateTop("categoryId", e.target.value)}
+              className={inputCls}
+              placeholder="Category id (see Categories in admin)"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Instructor ID (video platform)</label>
+            <input
+              value={draft.instructorId}
+              onChange={(e) => updateTop("instructorId", e.target.value)}
+              className={inputCls}
+              placeholder="Instructor id (see Instructors in admin)"
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Student Experience (sharing story)</label>
+            <textarea
+              value={draft.studentExperience}
+              onChange={(e) => updateTop("studentExperience", e.target.value)}
+              rows={2}
+              className={inputCls}
+              placeholder="Real student's journey — how they prepared, applied, got funded…"
+            />
           </div>
           <div>
             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Thumbnail URL</label>
