@@ -249,8 +249,7 @@ END $$;
 INSERT INTO public.scholarships (
   title, provider, country, coverage_type, amount_usd_value, deadline,
   degree_levels, eligible_majors, min_gpa, min_ielts,
-  financial_need_based, merit_based, description, requirements, website_url,
-  deadline_type, recurrence, application_status, verification_status, source_reliability, is_active
+  financial_need_based, merit_based, description, requirements, website_url
 )
 SELECT * FROM (VALUES
   (
