@@ -1,14 +1,16 @@
 /**
  * AI helper — OpenRouter API (https://openrouter.ai).
  *
- * Replace the old Google Gemini integration. Model and API key are
- * configurable via env vars:
+ * Model and API key are configurable via env vars:
  *   OPENROUTER_API_KEY  (required)
- *   OPENROUTER_MODEL    (optional, default "openrouter/auto")
+ *   OPENROUTER_MODEL    (optional, default "google/gemini-2.5-flash" —
+ *                       fast, high-quality and usually available for free
+ *                       on OpenRouter; "openrouter/auto" tends to pick the
+ *                       cheapest model, which produces low-quality output)
  */
 export async function callAI(prompt: string, systemInstruction?: string): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || "openrouter/auto";
+  const model = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
 
   if (!apiKey) {
     console.warn("OPENROUTER_API_KEY is not set — AI features will return empty.");
@@ -26,8 +28,8 @@ export async function callAI(prompt: string, systemInstruction?: string): Promis
   const requestBody = {
     model,
     messages,
-    temperature: 0.7,
-    max_tokens: 2048,
+    temperature: 0.6,
+    max_tokens: 4096,
   };
 
   try {
@@ -36,6 +38,9 @@ export async function callAI(prompt: string, systemInstruction?: string): Promis
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        // OpenRouter best practices — helps route to good models.
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridgeai-1.onrender.com",
+        "X-Title": "ScholarBridge",
       },
       body: JSON.stringify(requestBody),
     });

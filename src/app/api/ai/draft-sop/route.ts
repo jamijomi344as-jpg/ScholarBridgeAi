@@ -21,9 +21,15 @@ export async function POST(req: Request) {
 
     const targetUni = universityName || "Target University";
     const targetProg = programName || profile.targetMajor;
+    const langName = localeToLanguageName(profile.preferredLocale || "en");
 
     const prompt = `Write a compelling, academic Statement of Purpose (SOP) draft for an applicant applying to ${targetUni} for the ${targetProg} program.
-IMPORTANT: Write the entire SOP in ${localeToLanguageName(profile.preferredLocale || "en")}.
+
+ABSOLUTE LANGUAGE REQUIREMENT:
+- Write the ENTIRE SOP in ${langName}.
+- Every single sentence must be in ${langName}. Do NOT mix other languages, do NOT insert random foreign words, do NOT switch to another script, and do NOT produce gibberish or placeholder text.
+- If a detail is unknown, write a natural, generic ${langName} sentence instead of random words.
+- Use clean, professional academic prose in ${langName} from the first word to the last.
 
 APPLICANT INFO:
 - Name: ${profile.name}
@@ -36,14 +42,17 @@ APPLICANT INFO:
 - Personal Hook/Inspiration: ${personalHook || "Driven by real-world technology challenges and a desire to build high-impact scalable systems."}
 - Long-term Career Goals: ${careerGoals || "To become an R&D engineer / research leader advancing state-of-the-art technological solutions."}
 
-Format the output clearly into 5 distinct paragraphs with bold paragraph headings:
+Format the output clearly into 5 distinct paragraphs with bold paragraph headings (headings can stay in English, body MUST be in ${langName}):
 Paragraph 1: Executive Hook & Intellectual Awakening
 Paragraph 2: Academic Foundations & Technical Mastery
 Paragraph 3: Practical Projects, Research & Professional Impact
 Paragraph 4: Why ${targetUni}? (Specific Faculty, Labs & Curriculum Fit)
 Paragraph 5: Long-Term Vision & Post-Graduation Impact`;
 
-    let sopContent = await callAI(prompt, "You are an expert SOP editor and academic writing mentor.");
+    let sopContent = await callAI(
+      prompt,
+      `You are an expert SOP editor and academic writing mentor. You ALWAYS write in the language requested by the user (${langName}), with perfect grammar, natural academic style, and zero code-switching or gibberish.`
+    );
 
     if (!sopContent) {
       sopContent = `**Statement of Purpose: Candidate ${profile.name}**
