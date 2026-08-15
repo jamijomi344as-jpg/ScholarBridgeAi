@@ -1,18 +1,21 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldCheck, Building2, Video, Award, Gift } from "lucide-react";
+import { ShieldCheck, Building2, Video, Award, Gift, History, Settings2, RefreshCw } from "lucide-react";
 import { StudentProfile } from "./Navbar";
 import { UniversitiesManager } from "./admin/UniversitiesManager";
 import { CoursesManager } from "./admin/CoursesManager";
 import { ScholarshipsManager } from "./admin/ScholarshipsManager";
 import { PremiumManager } from "./admin/PremiumManager";
+import { AuditLogViewer } from "./admin/AuditLogViewer";
+import { ConfigManager } from "./admin/ConfigManager";
+import { RefreshCenter } from "./admin/RefreshCenter";
 
 interface AdminPanelProps {
   activeProfile: StudentProfile | null;
 }
 
-type AdminTab = "universities" | "courses" | "scholarships" | "premium";
+type AdminTab = "universities" | "courses" | "scholarships" | "premium" | "audit" | "config" | "refresh";
 
 export function AdminPanel({ activeProfile }: AdminPanelProps) {
   const [tab, setTab] = useState<AdminTab>("universities");
@@ -26,6 +29,9 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
     { id: "courses", label: "Courses & Videos", icon: <Video className="h-4 w-4" /> },
     { id: "scholarships", label: "Scholarships", icon: <Award className="h-4 w-4" /> },
     { id: "premium", label: "Premium Gifts", icon: <Gift className="h-4 w-4" /> },
+    { id: "audit", label: "Audit Log", icon: <History className="h-4 w-4" /> },
+    { id: "refresh", label: "Data Refresh", icon: <RefreshCw className="h-4 w-4" /> },
+    { id: "config", label: "Settings", icon: <Settings2 className="h-4 w-4" /> },
   ];
 
   return (
@@ -37,7 +43,7 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold">Admin Panel</h1>
-            <p className="text-xs text-slate-300 mt-0.5">Manage universities, courses/videos, scholarships &amp; premium access.</p>
+            <p className="text-xs text-slate-300 mt-0.5">Manage universities, courses/videos, scholarships, premium access &amp; data operations.</p>
           </div>
         </div>
       </div>
@@ -61,6 +67,9 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
       {tab === "courses" && <CoursesManager adminProfileId={activeProfile.id} />}
       {tab === "scholarships" && <ScholarshipsManager adminProfileId={activeProfile.id} />}
       {tab === "premium" && <PremiumManager adminProfileId={activeProfile.id} />}
+      {tab === "audit" && <AuditLogViewer adminProfileId={activeProfile.id} />}
+      {tab === "refresh" && <RefreshCenter adminProfileId={activeProfile.id} />}
+      {tab === "config" && <ConfigManager adminProfileId={activeProfile.id} />}
     </div>
   );
 }

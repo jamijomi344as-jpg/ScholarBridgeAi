@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { scholarships, studentProfiles } from "@/db/schema";
 import { calculateScholarshipMatch } from "@/lib/matching";
+import { withStatus } from "@/lib/scholarshipStatus";
 import { eq } from "drizzle-orm";
 import { seedDatabase } from "@/db/seed";
 
@@ -45,10 +46,15 @@ export async function GET(req: Request) {
       if (profileData) {
         matchInfo = calculateScholarshipMatch(profileData, s);
       }
+      // Computed application status from dates (spec §6) — never stale.
+      const statusInfo = withStatus(s);
       return {
         ...s,
         matchScore: matchInfo.matchScore,
         isEligible: matchInfo.isEligible,
+        computedStatus: statusInfo.computedStatus,
+        statusLabel: statusInfo.statusLabel,
+        expectedLabel: statusInfo.expectedLabel,
       };
     });
 

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, doublePrecision, boolean, timestamp, AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, doublePrecision, boolean, timestamp, date, jsonb, AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const studentProfiles = pgTable("student_profiles", {
   id: serial("id").primaryKey(),
@@ -55,6 +55,12 @@ export const universities = pgTable("universities", {
   highlights: text("highlights").notNull().default("[]"),
   websiteUrl: text("website_url").notNull(),
   imageUrl: text("image_url").notNull(),
+  // --- Source verification (spec §8) ---
+  sourceUrl: text("source_url"),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  verificationStatus: text("verification_status").notNull().default("unverified"),
+  sourceReliability: integer("source_reliability").notNull().default(7),
+  isActive: boolean("is_active").notNull().default(true),
 });
 
 export const scholarships = pgTable("scholarships", {
@@ -74,6 +80,36 @@ export const scholarships = pgTable("scholarships", {
   description: text("description").notNull(),
   requirements: text("requirements").notNull(),
   websiteUrl: text("website_url").notNull(),
+  // --- Dynamic lifecycle (spec §4) ---
+  eligibleCountries: text("eligible_countries").default("[]"),
+  fundingType: text("funding_type").default(""),
+  tuitionCoverage: text("tuition_coverage").default(""),
+  livingAllowance: integer("living_allowance"),
+  travelAllowance: integer("travel_allowance"),
+  accommodation: text("accommodation").default(""),
+  applicationFee: integer("application_fee"),
+  englishRequirements: text("english_requirements").default(""),
+  requiredDocuments: text("required_documents").default("[]"),
+  applicationUrl: text("application_url"),
+  // --- Dates & recurrence (spec §4, §7) ---
+  openingDate: date("opening_date"),
+  deadlineDate: date("deadline_date"),
+  deadlineType: text("deadline_type").notNull().default("unknown"),
+  deadlineRangeStart: date("deadline_range_start"),
+  deadlineRangeEnd: date("deadline_range_end"),
+  rounds: text("rounds").default("[]"),
+  recurrence: text("recurrence").notNull().default("none"),
+  expectedOpeningPeriod: text("expected_opening_period"),
+  expectedDeadlinePeriod: text("expected_deadline_period"),
+  applicationStatus: text("application_status").notNull().default("unknown"),
+  // --- Verification (spec §8, §11) ---
+  lastVerifiedAt: timestamp("last_verified_at"),
+  lastUpdatedAt: timestamp("last_updated_at"),
+  verificationStatus: text("verification_status").notNull().default("unverified"),
+  sourceReliability: integer("source_reliability").notNull().default(7),
+  sourceUrl: text("source_url"),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
 });
 
 export const savedUniversities = pgTable("saved_universities", {
@@ -324,4 +360,103 @@ export const referrals = pgTable("referrals", {
   status: text("status").notNull().default("pending"),
   pointsAwarded: integer("points_awarded").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 5. DATA INTEGRITY & OPERATIONS (spec §5, §9, §10, §11)
+// ---------------------------------------------------------------------------
+
+/** Key-value app configuration (prices, limits, schedules, feature mapping). */
+export const appConfig = pgTable("app_config", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+/** Audit / change history for scholarships & universities (spec §11). */
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull(), // university | scholarship
+  entityId: integer("entity_id").notNull(),
+  fieldChanged: text("field_changed").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  source: text("source"),
+  actor: text("actor").notNull().default("ADMIN"), // ADMIN | AUTOMATED_SYSTEM | AI | EXTERNAL_SOURCE
+  verificationStatus: text("verification_status").notNull().default("unverified"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Scheduled/manual refresh jobs (spec §9). */
+export const refreshJobs = pgTable("refresh_jobs", {
+  id: serial("id").primaryKey(),
+  jobType: text("job_type").notNull(), // scholarship | university | all
+  status: text("status").notNull().default("pending"), // pending | running | success | failed
+  trigger: text("trigger").notNull().default("manual"), // manual | scheduled | cron
+  itemsProcessed: integer("items_processed").notNull().default(0),
+  itemsChanged: integer("items_changed").notNull().default(0),
+  error: text("error"),
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 6. NOTIFICATIONS (spec §20)
+// ---------------------------------------------------------------------------
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(), // scholarship_opened | deadline_approaching | deadline_changed | milestone_due | ai_limit | payment_event | ...
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  link: text("link"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull().unique(),
+  inApp: boolean("in_app").notNull().default(true),
+  email: boolean("email").notNull().default(false),
+  push: boolean("push").notNull().default(false),
+  types: text("types").notNull().default("[\"scholarship_opened\",\"deadline_approaching\",\"deadline_changed\",\"milestone_due\"]"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 7. AI USAGE & COST CONTROL (spec §16)
+// ---------------------------------------------------------------------------
+export const aiUsage = pgTable("ai_usage", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "set null" }),
+  taskType: text("task_type").notNull(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  promptTokens: integer("prompt_tokens").notNull().default(0),
+  completionTokens: integer("completion_tokens").notNull().default(0),
+  costEstimate: doublePrecision("cost_estimate").notNull().default(0),
+  status: text("status").notNull().default("success"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// 8. APPLICATION DOCUMENTS (spec §24)
+// ---------------------------------------------------------------------------
+export const applicationDocuments = pgTable("application_documents", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => studentProfiles.id, { onDelete: "cascade" }).notNull(),
+  entityType: text("entity_type").notNull(), // university | scholarship | general
+  entityId: integer("entity_id"),
+  documentType: text("document_type").notNull(), // passport | transcript | diploma | recommendation | statement | cv | test_score | financial | portfolio | custom
+  label: text("label").notNull(),
+  isRequired: boolean("is_required").notNull().default(false),
+  status: text("status").notNull().default("missing"), // missing | uploaded | not_required
+  fileUrl: text("file_url"),
+  deadlineDate: date("deadline_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

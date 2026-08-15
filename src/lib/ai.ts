@@ -1,60 +1,39 @@
 /**
- * AI helper — OpenRouter API (https://openrouter.ai).
- *
- * Model and API key are configurable via env vars:
- *   OPENROUTER_API_KEY  (required)
- *   OPENROUTER_MODEL    (optional, default "google/gemini-2.5-flash" —
- *                       fast, high-quality and usually available for free
- *                       on OpenRouter; "openrouter/auto" tends to pick the
- *                       cheapest model, which produces low-quality output)
+ * Backward-compatible wrapper around the AI service layer.
+ * Existing routes call `callAI(prompt, systemInstruction)` — this delegates
+ * to the provider router and logs usage (spec §16).
  */
-export async function callAI(prompt: string, systemInstruction?: string): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
+import { aiGenerate } from "@/lib/ai/index";
+import { logAIUsage } from "@/lib/ai/usage";
 
-  if (!apiKey) {
-    console.warn("OPENROUTER_API_KEY is not set — AI features will return empty.");
-    return "";
-  }
+export async function callAI(
+  prompt: string,
+  systemInstruction?: string,
+  opts: { taskType?: string; profileId?: number | null } = {}
+): Promise<string> {
+  const taskType = opts.taskType || "general";
+  const response = await aiGenerate({
+    prompt,
+    systemInstruction,
+    taskType,
+  });
 
-  const endpoint = "https://openrouter.ai/api/v1/chat/completions";
-
-  const messages: { role: string; content: string }[] = [];
-  if (systemInstruction) {
-    messages.push({ role: "system", content: systemInstruction });
-  }
-  messages.push({ role: "user", content: prompt });
-
-  const requestBody = {
-    model,
-    messages,
-    temperature: 0.6,
-    max_tokens: 4096,
-  };
+  if (!response) return "";
 
   try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        // OpenRouter best practices — helps route to good models.
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridgeai-1.onrender.com",
-        "X-Title": "ScholarBridge",
-      },
-      body: JSON.stringify(requestBody),
+    await logAIUsage({
+      profileId: opts.profileId ?? null,
+      taskType,
+      provider: response.provider,
+      model: response.model,
+      promptTokens: response.promptTokens,
+      completionTokens: response.completionTokens,
+      costEstimate: response.costEstimate,
+      status: "success",
     });
-
-    if (!res.ok) {
-      console.warn("OpenRouter API request failed with status:", res.status, await res.text());
-      return "";
-    }
-
-    const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content;
-    return typeof text === "string" ? text : "";
   } catch (err) {
-    console.error("Error calling OpenRouter API:", err);
-    return "";
+    console.error("Failed to log AI usage:", err);
   }
+
+  return response.text;
 }

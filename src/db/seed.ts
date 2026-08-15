@@ -524,6 +524,33 @@ export async function seedDatabase() {
       }
     ]);
 
+    // Fill dynamic lifecycle fields for seeded scholarships (spec §4):
+    // convert legacy text deadlines to deadlineDate + deadlineType where possible.
+    try {
+      const seededScholarships = await db.select().from(scholarships);
+      for (const sc of seededScholarships) {
+        const parsed = Date.parse(sc.deadline);
+        if (!isNaN(parsed) && !sc.deadlineDate) {
+          await db
+            .update(scholarships)
+            .set({
+              deadlineDate: sc.deadline,
+              deadlineType: "exact",
+              applicationStatus: new Date(sc.deadline) >= new Date() ? "open" : "closed",
+              recurrence: "annual",
+              expectedDeadlinePeriod: sc.deadline,
+              lastVerifiedAt: new Date(),
+              verificationStatus: "unverified",
+              sourceUrl: sc.websiteUrl || null,
+            })
+            .where(eq(scholarships.id, sc.id));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to backfill scholarship lifecycle fields:", err);
+    }
+
+
     // Insert Default Student Profile
     const [profile] = await db.insert(studentProfiles).values({
       name: "Alex Chen",

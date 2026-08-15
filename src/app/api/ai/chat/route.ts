@@ -46,7 +46,7 @@ ${profileContext}`;
 
     const fullPrompt = `${historyText ? "CONVERSATION HISTORY:\n" + historyText + "\n\n" : ""}User Question: ${message}`;
 
-    let reply = await callAI(fullPrompt, systemInstruction);
+    let reply = await callAI(fullPrompt, systemInstruction, { taskType: "general", profileId: profileId ?? null });
 
     if (!reply) {
       // Intelligent fallback responses based on query topic

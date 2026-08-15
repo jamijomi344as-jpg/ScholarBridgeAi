@@ -35,6 +35,10 @@ export interface Scholarship {
   websiteUrl: string;
   matchScore?: number;
   isEligible?: boolean;
+  // Computed application status (spec §6)
+  computedStatus?: string;
+  statusLabel?: string;
+  expectedLabel?: string | null;
 }
 
 interface ScholarshipHubProps {
@@ -188,6 +192,30 @@ export function ScholarshipHub({
                       {score}% Eligibility
                     </span>
                   </div>
+
+                  {/* Computed application status (spec §6) */}
+                  {s.computedStatus && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${
+                          s.computedStatus === "open"
+                            ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                            : s.computedStatus === "closed"
+                            ? "bg-slate-200 text-slate-600 border border-slate-200"
+                            : s.computedStatus === "rolling"
+                            ? "bg-sky-100 text-sky-700 border border-sky-200"
+                            : s.computedStatus === "upcoming"
+                            ? "bg-amber-100 text-amber-700 border border-amber-200"
+                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                        }`}
+                      >
+                        {s.statusLabel}
+                      </span>
+                      {s.expectedLabel && (
+                        <span className="text-[10px] text-slate-400 italic">({s.expectedLabel})</span>
+                      )}
+                    </div>
+                  )}
 
                   <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
                     {s.description}

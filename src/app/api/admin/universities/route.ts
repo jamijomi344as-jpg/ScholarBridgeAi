@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { universities } from "@/db/schema";
 import { isAdmin } from "@/lib/admin";
 import { eq } from "drizzle-orm";
+import { auditRowChanges, writeAudit } from "@/lib/audit";
 
 function buildUniversityValues(u: any) {
   return {
@@ -40,6 +41,14 @@ export async function POST(req: Request) {
       .insert(universities)
       .values(buildUniversityValues(body.university || {}))
       .returning();
+    await writeAudit({
+      entityType: "university",
+      entityId: university.id,
+      fieldChanged: "created",
+      newValue: university.name,
+      actor: "ADMIN",
+      verificationStatus: "unverified",
+    });
     return NextResponse.json({ university });
   } catch (error) {
     console.error("POST /api/admin/universities error:", error);
@@ -61,11 +70,13 @@ export async function PATCH(req: Request) {
     if (!existing) {
       return NextResponse.json({ error: "University not found" }, { status: 404 });
     }
+    const values = buildUniversityValues(body.university || {});
     const [university] = await db
       .update(universities)
-      .set(buildUniversityValues(body.university || {}))
+      .set(values)
       .where(eq(universities.id, id))
       .returning();
+    await auditRowChanges("university", id, existing, { ...existing, ...values }, { actor: "ADMIN" });
     return NextResponse.json({ university });
   } catch (error) {
     console.error("PATCH /api/admin/universities error:", error);

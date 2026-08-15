@@ -51,7 +51,8 @@ Paragraph 5: Long-Term Vision & Post-Graduation Impact`;
 
     let sopContent = await callAI(
       prompt,
-      `You are an expert SOP editor and academic writing mentor. You ALWAYS write in the language requested by the user (${langName}), with perfect grammar, natural academic style, and zero code-switching or gibberish.`
+      `You are an expert SOP editor and academic writing mentor. You ALWAYS write in the language requested by the user (${langName}), with perfect grammar, natural academic style, and zero code-switching or gibberish.`,
+      { taskType: "essay", profileId }
     );
 
     if (!sopContent) {

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { scholarships } from "@/db/schema";
 import { isAdmin } from "@/lib/admin";
 import { eq } from "drizzle-orm";
+import { auditRowChanges, writeAudit } from "@/lib/audit";
 
 function toBool(value: any): boolean {
   return value === true || value === "true";
@@ -30,6 +31,32 @@ function buildScholarshipValues(s: any) {
     description: s.description || "",
     requirements: s.requirements || "",
     websiteUrl: s.websiteUrl || "",
+    // --- Dynamic lifecycle (spec §4) ---
+    eligibleCountries: toJsonField(s.eligibleCountries, "[]"),
+    fundingType: s.fundingType || "",
+    tuitionCoverage: s.tuitionCoverage || "",
+    livingAllowance: s.livingAllowance === "" || s.livingAllowance == null ? null : Number(s.livingAllowance),
+    travelAllowance: s.travelAllowance === "" || s.travelAllowance == null ? null : Number(s.travelAllowance),
+    accommodation: s.accommodation || "",
+    applicationFee: s.applicationFee === "" || s.applicationFee == null ? null : Number(s.applicationFee),
+    englishRequirements: s.englishRequirements || "",
+    requiredDocuments: toJsonField(s.requiredDocuments, "[]"),
+    applicationUrl: s.applicationUrl || null,
+    openingDate: s.openingDate || null,
+    deadlineDate: s.deadlineDate || null,
+    deadlineType: s.deadlineType || "unknown",
+    deadlineRangeStart: s.deadlineRangeStart || null,
+    deadlineRangeEnd: s.deadlineRangeEnd || null,
+    rounds: toJsonField(s.rounds, "[]"),
+    recurrence: s.recurrence || "none",
+    expectedOpeningPeriod: s.expectedOpeningPeriod || null,
+    expectedDeadlinePeriod: s.expectedDeadlinePeriod || null,
+    sourceUrl: s.sourceUrl || null,
+    verificationStatus: s.verificationStatus || "unverified",
+    sourceReliability: Number(s.sourceReliability) || 7,
+    isActive: s.isActive == null ? true : toBool(s.isActive),
+    notes: s.notes || null,
+    lastUpdatedAt: new Date(),
   };
 }
 
@@ -43,6 +70,14 @@ export async function POST(req: Request) {
       .insert(scholarships)
       .values(buildScholarshipValues(body.scholarship || {}))
       .returning();
+    await writeAudit({
+      entityType: "scholarship",
+      entityId: scholarship.id,
+      fieldChanged: "created",
+      newValue: scholarship.title,
+      actor: "ADMIN",
+      verificationStatus: "unverified",
+    });
     return NextResponse.json({ scholarship });
   } catch (error) {
     console.error("POST /api/admin/scholarships error:", error);
@@ -64,11 +99,13 @@ export async function PATCH(req: Request) {
     if (!existing) {
       return NextResponse.json({ error: "Scholarship not found" }, { status: 404 });
     }
+    const values = buildScholarshipValues(body.scholarship || {});
     const [scholarship] = await db
       .update(scholarships)
-      .set(buildScholarshipValues(body.scholarship || {}))
+      .set(values)
       .where(eq(scholarships.id, id))
       .returning();
+    await auditRowChanges("scholarship", id, existing, { ...existing, ...values }, { actor: "ADMIN" });
     return NextResponse.json({ scholarship });
   } catch (error) {
     console.error("PATCH /api/admin/scholarships error:", error);
