@@ -17,7 +17,9 @@ import {
   Star,
   BookOpen,
   Sparkles,
-  X
+  X,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
 
 export interface University {
@@ -42,6 +44,8 @@ export interface University {
   imageUrl: string;
   matchScore?: number;
   matchCategory?: "Reach" | "Match" | "Safety";
+  matchReasons?: string[];
+  matchIssues?: string[];
 }
 
 interface UniversityExplorerProps {
@@ -328,6 +332,24 @@ export function UniversityExplorer({
                           <span key={i} className="text-[10px] bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded-md">
                             ✓ {hl}
                           </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Why this match (spec §23) */}
+                    {(uni.matchReasons?.length || uni.matchIssues?.length) && (
+                      <div className="mt-2 space-y-1">
+                        {uni.matchReasons?.map((r, i) => (
+                          <p key={`r${i}`} className="text-[10px] text-emerald-700 flex items-start gap-1">
+                            <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span><b>Why:</b> {r}</span>
+                          </p>
+                        ))}
+                        {uni.matchIssues?.map((r, i) => (
+                          <p key={`p${i}`} className="text-[10px] text-amber-700 flex items-start gap-1">
+                            <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span><b>Potential issue:</b> {r}</span>
+                          </p>
                         ))}
                       </div>
                     )}

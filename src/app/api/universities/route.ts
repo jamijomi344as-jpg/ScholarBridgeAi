@@ -50,7 +50,12 @@ export async function GET(req: Request) {
 
     // Map match scores
     const results = allUnis.map(uni => {
-      let matchInfo = { matchScore: 80, matchCategory: "Match" as "Reach" | "Match" | "Safety" };
+      let matchInfo: {
+        matchScore: number;
+        matchCategory: "Reach" | "Match" | "Safety";
+        reasons?: string[];
+        potentialIssues?: string[];
+      } = { matchScore: 80, matchCategory: "Match", reasons: [], potentialIssues: [] };
       if (profileData) {
         matchInfo = calculateUniversityMatch(profileData, uni);
       }
@@ -58,6 +63,8 @@ export async function GET(req: Request) {
         ...uni,
         matchScore: matchInfo.matchScore,
         matchCategory: matchInfo.matchCategory,
+        matchReasons: matchInfo.reasons ?? [],
+        matchIssues: matchInfo.potentialIssues ?? [],
       };
     });
 

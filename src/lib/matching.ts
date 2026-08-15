@@ -60,30 +60,54 @@ export interface ScholarshipData {
 
 export function calculateUniversityMatch(profile: StudentProfileData, uni: UniversityData) {
   let score = 70;
+  const reasons: string[] = [];
+  const potentialIssues: string[] = [];
 
-  // Normalize GPA to 4.0 scale
+  // Normalize GPA to 4.0 scale (spec §23 — explain the score)
   const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
   const gpaDiff = normGpa - uni.minGpa;
 
-  if (gpaDiff >= 0.5) score += 15;
-  else if (gpaDiff >= 0.2) score += 10;
-  else if (gpaDiff >= 0) score += 5;
-  else if (gpaDiff >= -0.3) score -= 12;
-  else score -= 25;
+  if (gpaDiff >= 0.5) {
+    score += 15;
+    reasons.push(`GPA ${normGpa.toFixed(2)} well above the ${uni.minGpa} minimum`);
+  } else if (gpaDiff >= 0.2) {
+    score += 10;
+    reasons.push(`GPA ${normGpa.toFixed(2)} above the ${uni.minGpa} minimum`);
+  } else if (gpaDiff >= 0) {
+    score += 5;
+    reasons.push(`GPA ${normGpa.toFixed(2)} meets the ${uni.minGpa} minimum`);
+  } else if (gpaDiff >= -0.3) {
+    score -= 12;
+    potentialIssues.push(`GPA ${normGpa.toFixed(2)} slightly below the ${uni.minGpa} minimum`);
+  } else {
+    score -= 25;
+    potentialIssues.push(`GPA ${normGpa.toFixed(2)} is below the ${uni.minGpa} requirement`);
+  }
 
   // Language Requirement Check
   if (profile.ieltsScore && uni.minIelts) {
-    if (profile.ieltsScore >= uni.minIelts + 0.5) score += 8;
-    else if (profile.ieltsScore >= uni.minIelts) score += 4;
-    else score -= 15;
+    if (profile.ieltsScore >= uni.minIelts + 0.5) {
+      score += 8;
+      reasons.push(`IELTS ${profile.ieltsScore} above the ${uni.minIelts} requirement`);
+    } else if (profile.ieltsScore >= uni.minIelts) {
+      score += 4;
+      reasons.push(`IELTS ${profile.ieltsScore} meets the ${uni.minIelts} requirement`);
+    } else {
+      score -= 15;
+      potentialIssues.push(`IELTS ${profile.ieltsScore} below the ${uni.minIelts} minimum`);
+    }
   }
 
   // Budget Alignment
   const totalUniCost = uni.annualTuitionUsd + uni.annualLivingEstUsd;
   if (profile.budgetAnnualUsd >= totalUniCost) {
     score += 10;
+    reasons.push(`Estimated cost $${totalUniCost.toLocaleString()}/yr fits your budget`);
   } else {
     const budgetDeficit = totalUniCost - profile.budgetAnnualUsd;
+    potentialIssues.push(
+      `Estimated cost $${totalUniCost.toLocaleString()}/yr exceeds your $${profile.budgetAnnualUsd.toLocaleString()} budget`
+    );
     if (budgetDeficit > 30000 && !profile.needScholarship) {
       score -= 20;
     } else if (budgetDeficit > 15000) {
@@ -105,11 +129,13 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
 
   if (preferredList.some(c => c.toLowerCase() === uni.country.toLowerCase())) {
     score += 8;
+    reasons.push(`${uni.country} is on your preferred list`);
   }
 
   // Research / Work Experience Boost for Master/PhD or top ranking
   if ((profile.researchPublications || 0) > 0 || (profile.workExperienceYears || 0) > 0) {
     score += 5;
+    reasons.push("Research / work experience strengthens your application");
   }
 
   // Clamp Score
@@ -125,7 +151,12 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
     matchCategory = "Reach";
   }
 
-  return { matchScore, matchCategory };
+  return {
+    matchScore,
+    matchCategory,
+    reasons: reasons.slice(0, 4),
+    potentialIssues: potentialIssues.slice(0, 3),
+  };
 }
 
 export function calculateScholarshipMatch(profile: StudentProfileData, scholarship: ScholarshipData) {
