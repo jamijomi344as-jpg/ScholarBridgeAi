@@ -62,6 +62,7 @@ export function UniversityExplorer({
   onUnsaveUniversity,
 }: UniversityExplorerProps) {
   const [universities, setUniversities] = useState<University[]>([]);
+  const [fetchError, setFetchError] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -80,6 +81,7 @@ export function UniversityExplorer({
 
   const fetchUniversities = async () => {
     setLoading(true);
+    setFetchError("");
     try {
       const params = new URLSearchParams();
       if (activeProfile?.id) params.set("profileId", activeProfile.id.toString());
@@ -89,11 +91,22 @@ export function UniversityExplorer({
 
       const res = await fetch(`/api/universities?${params.toString()}`);
       const data = await res.json();
+      if (!res.ok) {
+        // Show the real server error instead of a misleading empty message.
+        if (data?.error?.includes("does not exist") || data?.error?.includes("column") || data?.error?.includes("out of date")) {
+          setFetchError("Database schema is out of date. Please run `supabase/add_data_integrity.sql` in Supabase SQL Editor (or redeploy on Render) to add the new columns.");
+        } else {
+          setFetchError(data?.error || "Failed to load universities.");
+        }
+        setUniversities([]);
+        return;
+      }
       if (data.universities) {
         setUniversities(data.universities);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching universities:", err);
+      setFetchError(err?.message || "Failed to load universities.");
     } finally {
       setLoading(false);
     }
@@ -229,6 +242,17 @@ export function UniversityExplorer({
       {loading ? (
         <div className="p-12 text-center text-slate-500 font-medium bg-white rounded-2xl border border-slate-200">
           Loading universities & evaluating profile matches...
+        </div>
+      ) : fetchError ? (
+        <div className="p-8 text-center bg-white rounded-2xl border border-red-200">
+          <p className="text-xs font-bold text-red-700 mb-2">Failed to load universities</p>
+          <p className="text-[11px] text-slate-600 break-all">{fetchError}</p>
+          <button
+            onClick={fetchUniversities}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700"
+          >
+            Try again
+          </button>
         </div>
       ) : filteredUniversities.length === 0 ? (
         <div className="p-12 text-center text-slate-500 bg-white rounded-2xl border border-slate-200">
