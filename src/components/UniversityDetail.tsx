@@ -29,27 +29,28 @@ interface UniversityDetailData {
   worldRanking: number;
   universityType: string | null;
   foundedYear: number | null;
+  address: string | null;
   internationalStudentsCount: number | null;
-  internationalStudentsPct: number | null;
+  internationalStudentsPercentage: number | null;
   annualTuitionUsd: number | null;
   tuitionCurrency: string;
+  livingCostCurrency: string;
   annualLivingEstUsd: number | null;
+  accommodationCostUsd: number | null;
   applicationFee: number | null;
+  applicationFeeCurrency: string;
   minGpa: number | null;
   minIelts: number | null;
-  minToefl: number | null;
-  minDuolingo: number | null;
   minSat: number | null;
-  minAct: number | null;
   acceptanceRate: number | null;
   postStudyWorkVisaYears: number | null;
-  postStudyVisaNote: string | null;
-  isEnglishTaught: boolean;
   description: string;
   websiteUrl: string;
-  undergraduateUrl: string | null;
-  internationalUrl: string | null;
-  applicationPlatform: string | null;
+  officialWebsiteUrl: string | null;
+  admissionsUrl: string | null;
+  internationalAdmissionsUrl: string | null;
+  undergraduateAdmissionsUrl: string | null;
+  applicationUrl: string | null;
   imageUrl: string | null;
   verificationStatus: string;
 }
@@ -68,11 +69,19 @@ interface ProgramData {
   tuitionPeriod: string;
   applicationDeadline: string | null;
   minIelts: number | null;
+  minToefl: number | null;
+  minDuolingo: number | null;
   minSat: number | null;
+  minAct: number | null;
+  minGpa: number | null;
+  portfolioRequired: boolean;
+  interviewRequired: boolean;
+  recommendationRequired: boolean;
+  personalStatementRequired: boolean;
   programUrl: string | null;
   applicationUrl: string | null;
   isVerified: boolean;
-  requirements: { requirementType: string; minimumValue: number | null; valueText: string | null; portfolioRequired: boolean; interviewRequired: boolean; recommendationRequired: boolean; personalStatementRequired: boolean }[];
+  requirements: { requirementType: string; minimumValue: number | null; valueText: string | null }[];
 }
 
 interface CycleData {
@@ -121,10 +130,10 @@ interface UniversityDetailProps {
 }
 
 /** Spec §19: verified vs unavailable. NULL is never shown as a value. */
-function fmtMoney(v: number | null | undefined, currency = "USD"): string {
+function fmtMoney(v: number | null | undefined, currency = "USD", suffix = " / year"): string {
   if (v == null) return "Not available";
   const sym = currency === "USD" ? "$" : currency + " ";
-  return `${sym}${v.toLocaleString()} / year`;
+  return `${sym}${v.toLocaleString()}${suffix}`;
 }
 
 function fmtValue(v: string | number | null | undefined, suffix = ""): string {
@@ -243,26 +252,34 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:items-end">
-              {uni.websiteUrl && (
-                <a
-                  href={uni.websiteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-white text-slate-900 px-4 py-2 text-xs font-bold hover:bg-indigo-50"
-                >
-                  <Globe className="h-3.5 w-3.5" /> Official Website
-                </a>
-              )}
-              {uni.internationalUrl && (
-                <a
-                  href={uni.internationalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-900 px-4 py-2 text-xs font-bold hover:bg-amber-300"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" /> Apply (International)
-                </a>
-              )}
+              {(() => {
+                const site = uni.officialWebsiteUrl || uni.websiteUrl;
+                const apply = uni.applicationUrl || uni.internationalAdmissionsUrl || uni.admissionsUrl;
+                return (
+                  <div className="flex flex-col gap-2 sm:items-end">
+                    {site && (
+                      <a
+                        href={site}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-white text-slate-900 px-4 py-2 text-xs font-bold hover:bg-indigo-50"
+                      >
+                        <Globe className="h-3.5 w-3.5" /> Official Website
+                      </a>
+                    )}
+                    {apply && (
+                      <a
+                        href={apply}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-900 px-4 py-2 text-xs font-bold hover:bg-amber-300"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Apply Now
+                      </a>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -276,26 +293,54 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         {cycles.length === 0 ? (
           <div className="mt-3">
             <p className="text-xs text-slate-400">No verified application cycles yet.</p>
-            {uni.internationalUrl && (
-              <a
-                href={uni.internationalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-900 px-4 py-2 text-xs font-bold hover:bg-amber-300"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> Apply (International)
-              </a>
-            )}
-            {!uni.internationalUrl && uni.websiteUrl && (
-              <a
-                href={uni.websiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-              >
-                <Globe className="h-3.5 w-3.5" /> Visit official website
-              </a>
-            )}
+            {(() => {
+              const apply = uni.applicationUrl || uni.internationalAdmissionsUrl || uni.admissionsUrl;
+              const site = uni.officialWebsiteUrl || uni.websiteUrl;
+              return (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {apply && (
+                    <a
+                      href={apply}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-900 px-4 py-2 text-xs font-bold hover:bg-amber-300"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Apply Now
+                    </a>
+                  )}
+                  {uni.undergraduateAdmissionsUrl && (
+                    <a
+                      href={uni.undergraduateAdmissionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Undergraduate Admissions
+                    </a>
+                  )}
+                  {uni.admissionsUrl && !apply && (
+                    <a
+                      href={uni.admissionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Admissions
+                    </a>
+                  )}
+                  {site && (
+                    <a
+                      href={site}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      <Globe className="h-3.5 w-3.5" /> Official website
+                    </a>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="mt-3 space-y-3">
@@ -370,7 +415,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           <Field label="University type" value={fmtValue(uni.universityType)} icon={<Building2 className="h-3 w-3" />} />
           <Field label="Founded" value={fmtValue(uni.foundedYear)} icon={<Calendar className="h-3 w-3" />} />
           <Field label="Acceptance rate" value={uni.acceptanceRate != null ? `${uni.acceptanceRate}%` : "Not specified"} />
-          <Field label="English-taught" value={uni.isEnglishTaught ? "Yes" : "Not specified"} />
+          <Field label="Address" value={fmtValue(uni.address)} icon={<MapPin className="h-3 w-3" />} />
         </div>
         <p className="mt-4 text-sm text-slate-600 leading-relaxed">
           {uni.description && uni.description !== "" ? uni.description : "Official description not available."}
@@ -384,14 +429,11 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         </h2>
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Field label="Minimum IELTS" value={uni.minIelts != null ? `IELTS ${uni.minIelts}` : "Not specified"} />
-          <Field label="Minimum TOEFL" value={uni.minToefl != null ? `TOEFL ${uni.minToefl}` : "Not specified"} />
-          <Field label="Minimum Duolingo" value={uni.minDuolingo != null ? `${uni.minDuolingo}` : "Not specified"} />
           <Field label="Minimum GPA" value={uni.minGpa != null ? `${uni.minGpa} / 4.0` : "Not specified"} />
           <Field label="Minimum SAT" value={uni.minSat != null ? `${uni.minSat}` : "Not specified"} />
-          <Field label="Minimum ACT" value={uni.minAct != null ? `${uni.minAct}` : "Not specified"} />
         </div>
         <p className="mt-3 text-[11px] text-slate-400 italic">
-          Only officially verified minimums are shown. If a value is not specified by the university, it is marked &quot;Not specified&quot;.
+          University-level minimums. Program-specific requirements (TOEFL, Duolingo, SAT/ACT, PTE, Cambridge English, documents) are listed under each program below.
         </p>
       </div>
 
@@ -400,10 +442,11 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
           <DollarSign className="h-4 w-4 text-emerald-600" /> Tuition &amp; Costs
         </h2>
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Field label="Annual tuition" value={fmtMoney(uni.annualTuitionUsd, uni.tuitionCurrency)} />
-          <Field label="Living estimate" value={fmtMoney(uni.annualLivingEstUsd)} />
-          <Field label="Application fee" value={uni.applicationFee != null ? fmtMoney(uni.applicationFee) : "Not available"} />
+          <Field label="Living estimate" value={fmtMoney(uni.annualLivingEstUsd, uni.livingCostCurrency)} />
+          <Field label="Accommodation" value={fmtMoney(uni.accommodationCostUsd, "USD")} />
+          <Field label="Application fee" value={uni.applicationFee != null ? fmtMoney(uni.applicationFee, uni.applicationFeeCurrency, "") : "Not available"} />
         </div>
       </div>
 
@@ -433,9 +476,40 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
                 </div>
                 <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-600">
                   <span><b>Tuition:</b> {fmtMoney(p.tuitionAmount, p.tuitionCurrency)}</span>
+                  <span><b>Duration:</b> {p.durationYears != null ? `${p.durationYears} ${p.durationUnit || "years"}` : "Not specified"}</span>
+                  <span><b>Mode:</b> {fmtValue(p.studyMode)}</span>
                   <span><b>IELTS:</b> {p.minIelts != null ? p.minIelts : "Not specified"}</span>
                   {p.applicationDeadline && <span><b>Deadline:</b> {p.applicationDeadline}</span>}
                 </div>
+
+                {/* Program-specific requirements (verified values only) */}
+                {p.requirements.length > 0 && (
+                  <div className="mt-2.5 rounded-xl bg-slate-50 border border-slate-100 p-2.5 space-y-1">
+                    {p.requirements.map((r, i) => (
+                      <p key={i} className="text-[11px] text-slate-600">
+                        <b className="capitalize">{r.requirementType}:</b>{" "}
+                        {r.minimumValue != null ? r.minimumValue : r.valueText ? r.valueText : "required"}
+                      </p>
+                    ))}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-slate-100">
+                      {p.portfolioRequired && <span className="text-[10px] text-slate-500">📁 Portfolio required</span>}
+                      {p.interviewRequired && <span className="text-[10px] text-slate-500">🎤 Interview required</span>}
+                      {p.recommendationRequired && <span className="text-[10px] text-slate-500">📩 Recommendation letters</span>}
+                      {p.personalStatementRequired && <span className="text-[10px] text-slate-500">✍️ Personal statement</span>}
+                    </div>
+                  </div>
+                )}
+
+                {p.applicationUrl && (
+                  <a
+                    href={p.applicationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold text-violet-700 hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" /> Apply for this program
+                  </a>
+                )}
               </div>
             ))}
           </div>
@@ -493,7 +567,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
             label="Post-study work visa"
             value={uni.postStudyWorkVisaYears != null ? `${uni.postStudyWorkVisaYears} years` : "Not specified"}
           />
-          <Field label="Visa note" value={fmtValue(uni.postStudyVisaNote)} />
+
         </div>
       </div>
 
@@ -509,7 +583,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           />
           <Field
             label="Share of students"
-            value={uni.internationalStudentsPct != null ? `${uni.internationalStudentsPct}%` : "Not available"}
+            value={uni.internationalStudentsPercentage != null ? `${uni.internationalStudentsPercentage}%` : "Not available"}
           />
         </div>
       </div>

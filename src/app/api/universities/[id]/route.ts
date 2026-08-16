@@ -27,7 +27,39 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params;
     const uniId = parseInt(id, 10);
 
-    const [uni] = await db.select().from(universities).where(eq(universities.id, uniId));
+    let uni;
+    try {
+      const [row] = await db.select().from(universities).where(eq(universities.id, uniId));
+      uni = row;
+    } catch {
+      // Fallback: core subset if a column is unexpectedly missing.
+      const [row] = await db
+        .select({
+          id: universities.id,
+          name: universities.name,
+          country: universities.country,
+          city: universities.city,
+          flagEmoji: universities.flagEmoji,
+          worldRanking: universities.worldRanking,
+          degreeLevel: universities.degreeLevel,
+          programMajor: universities.programMajor,
+          annualTuitionUsd: universities.annualTuitionUsd,
+          annualLivingEstUsd: universities.annualLivingEstUsd,
+          minGpa: universities.minGpa,
+          minIelts: universities.minIelts,
+          minSat: universities.minSat,
+          acceptanceRate: universities.acceptanceRate,
+          postStudyWorkVisaYears: universities.postStudyWorkVisaYears,
+          description: universities.description,
+          highlights: universities.highlights,
+          websiteUrl: universities.websiteUrl,
+          imageUrl: universities.imageUrl,
+          verificationStatus: universities.verificationStatus,
+        })
+        .from(universities)
+        .where(eq(universities.id, uniId));
+      uni = row;
+    }
     if (!uni) {
       return NextResponse.json({ error: "University not found" }, { status: 404 });
     }
@@ -50,24 +82,43 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const reqs: { requirementType: string; minimumValue: number | null; valueText: string | null }[] = [];
       let programMinIelts: number | null = null;
       let programMinSat: number | null = null;
+      let programMinToefl: number | null = null;
+      let programMinDet: number | null = null;
+      let programMinGpa: number | null = null;
+      let programMinAct: number | null = null;
       for (const r of reqRows) {
         if (r.minIelts != null) {
           reqs.push({ requirementType: "ielts", minimumValue: r.minIelts, valueText: null });
           if (programMinIelts == null) programMinIelts = r.minIelts;
         }
-        if (r.minToefl != null) reqs.push({ requirementType: "toefl", minimumValue: r.minToefl, valueText: null });
-        if (r.minDet != null) reqs.push({ requirementType: "duolingo", minimumValue: r.minDet, valueText: null });
+        if (r.minToefl != null) {
+          reqs.push({ requirementType: "toefl", minimumValue: r.minToefl, valueText: null });
+          if (programMinToefl == null) programMinToefl = r.minToefl;
+        }
+        if (r.minDet != null) {
+          reqs.push({ requirementType: "duolingo", minimumValue: r.minDet, valueText: null });
+          if (programMinDet == null) programMinDet = r.minDet;
+        }
         if (r.minSat != null) {
           reqs.push({ requirementType: "sat", minimumValue: r.minSat, valueText: null });
           if (programMinSat == null) programMinSat = r.minSat;
         }
-        if (r.minAct != null) reqs.push({ requirementType: "act", minimumValue: r.minAct, valueText: null });
-        if (r.minGpa != null) reqs.push({ requirementType: "gpa", minimumValue: r.minGpa, valueText: null });
+        if (r.minAct != null) {
+          reqs.push({ requirementType: "act", minimumValue: r.minAct, valueText: null });
+          if (programMinAct == null) programMinAct = r.minAct;
+        }
+        if (r.minGpa != null) {
+          reqs.push({ requirementType: "gpa", minimumValue: r.minGpa, valueText: null });
+          if (programMinGpa == null) programMinGpa = r.minGpa;
+        }
         if (r.ibRequirement) reqs.push({ requirementType: "ib", minimumValue: null, valueText: r.ibRequirement });
         if (r.aLevelRequirement) reqs.push({ requirementType: "alevel", minimumValue: null, valueText: r.aLevelRequirement });
         if (r.apRequirement) reqs.push({ requirementType: "ap", minimumValue: null, valueText: r.apRequirement });
+        if (r.subjectRequirements) reqs.push({ requirementType: "subject", minimumValue: null, valueText: r.subjectRequirements });
+        if (r.otherRequirements) reqs.push({ requirementType: "other", minimumValue: null, valueText: r.otherRequirements });
       }
 
+      const flags = reqRows[0] ?? null;
       programsWithReqs.push({
         id: p.id,
         name: p.name,
@@ -83,7 +134,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         description: p.description,
         applicationDeadline: null,
         minIelts: programMinIelts,
+        minToefl: programMinToefl,
+        minDuolingo: programMinDet,
         minSat: programMinSat,
+        minAct: programMinAct,
+        minGpa: programMinGpa,
+        portfolioRequired: flags?.portfolioRequired ?? false,
+        interviewRequired: flags?.interviewRequired ?? false,
+        recommendationRequired: flags?.recommendationRequired ?? false,
+        personalStatementRequired: flags?.personalStatementRequired ?? false,
         programUrl: p.programUrl,
         applicationUrl: p.applicationUrl,
         isVerified: p.isVerified,

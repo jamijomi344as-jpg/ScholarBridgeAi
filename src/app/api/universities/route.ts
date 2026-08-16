@@ -6,6 +6,42 @@ import { eq, inArray } from "drizzle-orm";
 import { seedDatabase } from "@/db/seed";
 
 /**
+ * Resilient university select: tries the full schema first. If the database
+ * is missing an unexpected column (the DB is the source of truth and may
+ * differ), falls back to a core subset so the list still works.
+ */
+async function selectUniversities() {
+  try {
+    return await db.select().from(universities);
+  } catch {
+    return await db
+      .select({
+        id: universities.id,
+        name: universities.name,
+        country: universities.country,
+        city: universities.city,
+        flagEmoji: universities.flagEmoji,
+        worldRanking: universities.worldRanking,
+        degreeLevel: universities.degreeLevel,
+        programMajor: universities.programMajor,
+        annualTuitionUsd: universities.annualTuitionUsd,
+        annualLivingEstUsd: universities.annualLivingEstUsd,
+        minGpa: universities.minGpa,
+        minIelts: universities.minIelts,
+        minSat: universities.minSat,
+        acceptanceRate: universities.acceptanceRate,
+        postStudyWorkVisaYears: universities.postStudyWorkVisaYears,
+        description: universities.description,
+        highlights: universities.highlights,
+        websiteUrl: universities.websiteUrl,
+        imageUrl: universities.imageUrl,
+        verificationStatus: universities.verificationStatus,
+      })
+      .from(universities);
+  }
+}
+
+/**
  * University discovery API (spec §16).
  * NULL values are never treated as zero — filters only match verified data.
  */
@@ -26,7 +62,7 @@ export async function GET(req: Request) {
     const minRank = searchParams.get("minRank") ? Number(searchParams.get("minRank")) : null;
     const maxRank = searchParams.get("maxRank") ? Number(searchParams.get("maxRank")) : null;
 
-    let allUnis = await db.select().from(universities);
+    let allUnis = await selectUniversities();
 
     // Get profile for match calculation if provided
     let profileData = null;
