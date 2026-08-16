@@ -33,6 +33,8 @@ export interface SourceEvidence {
   confidence: number; // 0..1
   /** Source year/cycle e.g. "2026-27" — never assume next year (spec §8). */
   sourceYear?: string;
+  /** True when produced by the AI provider — NEVER auto-verified (spec §14). */
+  aiGenerated?: boolean;
 }
 
 export interface ExtractedUniversity {
@@ -241,4 +243,15 @@ export interface ExtractionDebug {
   extractionCounts: Record<string, number>;
   pageNotes: PageFetchNote[];
   classifications: ClassifyDebug[];
+  /** AI provider session (spec §22): status/model/calls/fallbacks. */
+  ai: {
+    status: "available" | "unavailable";
+    provider: string;
+    model: string;
+    calls: number;
+    fallbacks: number;
+    classifiedPages: string[];
+    extractedPages: string[];
+    rejectedEvidence: { field: string; url: string; reasons: string[] }[];
+  };
 }

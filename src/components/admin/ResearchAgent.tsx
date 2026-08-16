@@ -377,6 +377,22 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
               </div>
             )}
 
+            {/* AI provider status (spec §22) */}
+            {report.debug?.ai && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`inline-block h-2 w-2 rounded-full ${report.debug.ai.status === "available" ? "bg-emerald-500" : "bg-red-400"}`} />
+                  <p className="text-[10px] font-bold text-slate-600 uppercase">AI Provider: {report.debug.ai.provider}</p>
+                  <p className="text-[10px] text-slate-500">Model: {report.debug.ai.model}</p>
+                  <p className="text-[10px] text-slate-500">Status: {report.debug.ai.status}</p>
+                  <p className="text-[10px] text-slate-500 ml-auto">calls {report.debug.ai.calls} · fallbacks {report.debug.ai.fallbacks}</p>
+                </div>
+                <p className="text-[10px] text-amber-700 font-semibold">
+                  ⚠ AI-generated extraction is never trusted without source/evidence validation.
+                </p>
+              </div>
+            )}
+
             {/* Extraction pipeline debug (spec §21) */}
             {report.debug && (
               <div className="mb-3 rounded-xl bg-slate-50 border border-slate-100 p-3">

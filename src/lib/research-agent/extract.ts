@@ -153,6 +153,8 @@ export interface ClassifyResult {
   signals: string[];
   negatives: string[];
   reason: string;
+  /** Raw per-category scores (for ambiguity detection / AI escalation). */
+  scores?: Record<string, number>;
 }
 
 /** Site-meta / legal / generic navigation URLs — never research categories. */
@@ -368,6 +370,7 @@ export function classifyResearchPage(
     signals: (reasons[bestCat] || "").split(", ").filter(Boolean),
     negatives,
     reason: `classified ${CATEGORY_LABEL[bestCat]} (score ${bestScore})`,
+    scores,
   };
 }
 

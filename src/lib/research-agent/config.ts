@@ -16,6 +16,8 @@ export const AGENT_CONFIG = {
   maxPrograms: 12,
   /** Course-hub pages crawled one level for program discovery (spec §7). */
   maxHubPages: 4,
+  /** AI request budget per run (spec §17): classification + extraction per page, capped. */
+  aiMaxCallsPerRun: 24,
   /** Confidence threshold to auto-write (below → review_required). */
   writeConfidence: 0.7,
   /** Confidence threshold for "verified" status. */

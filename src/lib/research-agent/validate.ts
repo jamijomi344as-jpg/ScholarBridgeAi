@@ -56,6 +56,9 @@ export function validateEvidence(ev: SourceEvidence): ValidationResult {
 
 /** A record may be marked verified only when the source is official-ish AND evidence valid. */
 export function canMarkVerified(ev: SourceEvidence): boolean {
+  // AI-generated evidence is NEVER auto-verified — verified requires a
+  // human-reviewed, source-backed determination (spec §14, §20).
+  if (ev.aiGenerated) return false;
   const v = validateEvidence(ev);
   if (!v.ok) return false;
   if (ev.confidence < 0.92) return false;

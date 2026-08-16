@@ -37,6 +37,9 @@ import {
 import { logRunStart, logRunFinish, buildReport } from "./audit";
 import { normalizeNameKey, normalizeUrl, toNumber, normalizeCurrency, toIsoDate } from "./normalize";
 import { isResearchSourceUrl, rejectSourceReason } from "./urlFilter";
+import { createAIProvider } from "./ai/openrouter";
+import { validateAIEvidence, aiEvidenceToSourceEvidence } from "./ai/validate";
+import type { AIExtractionResult, AIProvider } from "./ai/types";
 import type { RunRequest, RunStatus, AuditReport, SourceEvidence, FieldDecision } from "./types";
 
 export type ProgressFn = (message: string) => void;
@@ -61,6 +64,20 @@ export async function runUniversity(
   const rejectedSources: { url: string; reason: string }[] = [];
   const discoveryOnly: { url: string; title: string; type: string; reason: string }[] = [];
   const evidence: SourceEvidence[] = [];
+  // AI provider (server-side only) — deterministic rules run first; AI is a
+  // fallback/assist and NEVER auto-verifies anything (spec §2, §3, §14).
+  const aiProvider: AIProvider = createAIProvider();
+  const aiSession = {
+    status: (aiProvider.available ? "available" : "unavailable") as "available" | "unavailable",
+    provider: aiProvider.name,
+    model: aiProvider.model,
+    calls: 0,
+    fallbacks: 0,
+    classifiedPages: [] as string[],
+    extractedPages: [] as string[],
+    rejectedEvidence: [] as { field: string; url: string; reasons: string[] }[],
+  };
+  const aiExtractByUrl = new Map<string, AIExtractionResult>();
   const debug = {
     fetchedPages: 0,
     classifiedCounts: {} as Record<string, number>,
@@ -70,6 +87,7 @@ export async function runUniversity(
       url: string; title: string; h1: string; category: string;
       confidence: number; signals: string[]; negatives: string[]; reason: string;
     }[],
+    ai: aiSession,
   };
   let universityName = `#${universityId}`;
   let sourcesReadBack = 0;
@@ -262,11 +280,51 @@ export async function runUniversity(
     for (const p of pages) {
       // The root URL is homepage by definition — never reclassified by nav text.
       if (p.type === "homepage") continue;
-      const cls = classifyResearchPage(p.url, p.structure, p.title);
+      let cls = classifyResearchPage(p.url, p.structure, p.title);
+      let aiUsed = false;
+
+      // AI is consulted ONLY when the deterministic classifier is ambiguous
+      // (no strong category, or a near-tie) — spec §4, §5, §17.
+      const ambiguous =
+        cls.category === "other" ||
+        (cls.scores != null &&
+          (() => {
+            const sorted = Object.entries(cls.scores!).sort((a, b) => b[1] - a[1]);
+            return sorted.length >= 2 && sorted[0][1] - sorted[1][1] <= 15 && sorted[0][1] < 80;
+          })());
+      if (ambiguous && aiProvider.available && aiSession.calls < AGENT_CONFIG.aiMaxCallsPerRun) {
+        const aiCls = await aiProvider.classifyPage({
+          url: p.url,
+          title: p.structure.title || p.title || "",
+          h1: p.structure.h1[0] || "",
+          headings: p.structure.h2.slice(0, 8).join(" | "),
+          mainContent: p.structure.mainTextNoLinks || p.structure.mainText,
+        });
+        aiSession.calls++;
+        const VALID_AI_TYPES = /^(homepage|admissions|international|program|tuition|living_costs|scholarship|deadline|requirements|discovery_only)$/;
+        if (aiCls && VALID_AI_TYPES.test(aiCls.pageType) && aiCls.confidence >= 0.6) {
+          aiUsed = true;
+          const cat = aiCls.pageType === "discovery_only" ? "other" : aiCls.pageType;
+          cls = {
+            category: cat,
+            confidence: aiCls.confidence,
+            signals: [...cls.signals, `ai:${(aiCls.evidence || []).slice(0, 4).join(";")}`],
+            negatives: cls.negatives,
+            reason: `AI(${aiProvider.model}): ${aiCls.reason || "ai classification"}`,
+            scores: cls.scores,
+          };
+          progress(`AI classification: [${cat}] conf ${aiCls.confidence.toFixed(2)} — ${p.url}`);
+        } else {
+          aiSession.fallbacks++;
+          progress(`AI classification unavailable/unclear for ${p.url} — keeping deterministic result`);
+        }
+      }
+
       const oldType = p.type;
       p.type = cls.category;
       const disc = discovered.find((d) => d.url === p.url);
       if (disc && disc.type === oldType) disc.type = cls.category;
+      if (aiUsed) aiSession.classifiedPages.push(p.url);
       debug.classifications.push({
         url: p.url,
         title: p.structure.title || p.title || "",
@@ -275,10 +333,11 @@ export async function runUniversity(
         confidence: cls.confidence,
         signals: cls.signals,
         negatives: cls.negatives,
-        reason: cls.reason,
+        reason: `${cls.reason}${aiUsed ? " (AI)" : ""}`,
       });
       progress(
         `Classified [${cls.category}] (conf ${cls.confidence.toFixed(2)}) ${p.url} — ${cls.reason}` +
+        (aiUsed ? " [AI]" : "") +
         (cls.signals.length ? ` | signals: ${cls.signals.join(", ")}` : "") +
         (cls.negatives.length ? ` | negatives: ${cls.negatives.join(", ")}` : "")
       );
@@ -297,14 +356,14 @@ export async function runUniversity(
 
     for (const p of pages) {
       const ctx = ctxFor(p);
-      const ai = await aiExtract(p.text, p.url);
+      const aiAssist = await aiExtract(p.text, p.url);
       const before = evidence.length;
 
       if (scopes.includes("tuition") && pageTypeIs(p, ["tuition"])) {
         const t = extractMoney(p.text, ctx, "annual_tuition", "year", /tuition|fee/);
         if (t) evidence.push(t);
-        if (ai?.tuition?.amount && ai.tuition.currency) {
-          evidence.push({ field: "annual_tuition", value: ai.tuition.amount, currency: ai.tuition.currency, period: ai.tuition.period, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });
+        if (aiAssist?.tuition?.amount && aiAssist.tuition.currency) {
+          evidence.push({ field: "annual_tuition", value: aiAssist.tuition.amount, currency: aiAssist.tuition.currency, period: aiAssist.tuition.period, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });
         }
       }
       if (scopes.includes("living_costs") && pageTypeIs(p, ["living_costs"])) {
@@ -316,7 +375,7 @@ export async function runUniversity(
       if (scopes.includes("requirements") && pageTypeIs(p, ["requirements", "admissions", "international"])) {
         const ielts = extractNumberReq(p.text, ctx, "min_ielts", "IELTS");
         if (ielts) evidence.push(ielts);
-        if (ai?.ielts != null) evidence.push({ field: "min_ielts", value: ai.ielts, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });
+        if (aiAssist?.ielts != null) evidence.push({ field: "min_ielts", value: aiAssist.ielts, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });
         const toefl = extractNumberReq(p.text, ctx, "min_toefl", "TOEFL");
         if (toefl) evidence.push(toefl);
         const det = extractNumberReq(p.text, ctx, "min_det", "Duolingo");
@@ -368,6 +427,79 @@ export async function runUniversity(
       }
       if (scopes.includes("sources")) {
         evidence.push({ field: "source_discovered", value: p.url, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "page discovered", confidence: 1 });
+      }
+
+      // AI assist (OpenRouter, server-side): ONE extraction call per relevant
+      // page (spec §17). Deterministic regex extraction above always runs
+      // first; AI evidence is validated (quote in text, URL match, page type,
+      // middle-50% guard) and NEVER auto-verified (spec §13, §14, §20).
+      if (
+        aiProvider.available &&
+        aiSession.calls < AGENT_CONFIG.aiMaxCallsPerRun &&
+        pageTypeIs(p, ["tuition", "living_costs", "requirements", "deadline", "scholarship", "program", "admissions", "international"])
+      ) {
+        const aiRes = await aiProvider.extractPage({
+          url: p.url,
+          title: p.structure.title || p.title || "",
+          h1: p.structure.h1[0] || "",
+          headings: p.structure.h2.slice(0, 8).join(" | "),
+          mainContent: p.structure.mainTextNoLinks || p.structure.mainText,
+        });
+        aiSession.calls++;
+        if (aiRes) {
+          aiExtractByUrl.set(p.url, aiRes);
+          aiSession.extractedPages.push(p.url);
+          const pageTextForQuote = p.structure.mainTextNoLinks || p.text;
+          for (const ev of aiRes.evidence || []) {
+            const v = validateAIEvidence(ev, p.url, pageTextForQuote, p.type);
+            if (!v.ok) {
+              aiSession.rejectedEvidence.push({ field: ev.field, url: p.url, reasons: v.reasons });
+              continue;
+            }
+            evidence.push(aiEvidenceToSourceEvidence(ev, p.url, p.type));
+          }
+          // AI application cycles → deadline evidence (validated per round).
+          for (const c of aiRes.applicationCycles || []) {
+            if (!c.deadline || !c.evidenceQuote) continue;
+            const v = validateAIEvidence(
+              { field: "deadline", value: c.deadline, sourceUrl: p.url, sourceTitle: p.structure.title || p.title, evidenceQuote: c.evidenceQuote, confidence: c.confidence },
+              p.url, pageTextForQuote, p.type
+            );
+            if (!v.ok) {
+              aiSession.rejectedEvidence.push({ field: "deadline", url: p.url, reasons: v.reasons });
+              continue;
+            }
+            evidence.push({
+              field: "deadline", value: c.deadline, sourceUrl: p.url,
+              sourceTitle: p.structure.title || p.title || p.url,
+              sourceType: ctx.sourceType, exactEvidence: c.evidenceQuote,
+              confidence: c.confidence, aiGenerated: true,
+            });
+          }
+          // AI scholarships → amount evidence ONLY from scholarship pages.
+          if (p.type === "scholarship") {
+            for (const s of aiRes.scholarships || []) {
+              if (s.amount == null || !s.evidenceQuote) continue;
+              const v = validateAIEvidence(
+                { field: "scholarship_amount", value: s.amount, currency: s.currency, sourceUrl: p.url, sourceTitle: p.structure.title || p.title, evidenceQuote: s.evidenceQuote, confidence: s.confidence },
+                p.url, pageTextForQuote, p.type
+              );
+              if (!v.ok) {
+                aiSession.rejectedEvidence.push({ field: "scholarship_amount", url: p.url, reasons: v.reasons });
+                continue;
+              }
+              evidence.push({
+                field: "scholarship_amount", value: s.amount, currency: s.currency,
+                sourceUrl: p.url, sourceTitle: p.structure.title || p.title || p.url,
+                sourceType: ctx.sourceType, exactEvidence: s.evidenceQuote,
+                confidence: s.confidence, aiGenerated: true,
+              });
+            }
+          }
+        } else {
+          aiSession.fallbacks++;
+          progress(`AI extraction unavailable for ${p.url} — using deterministic regex results`);
+        }
       }
 
       const extracted = evidence.length - before;
@@ -446,14 +578,30 @@ export async function runUniversity(
       const programPages = pages.filter((p) => p.type === "program").slice(0, AGENT_CONFIG.maxPrograms);
       for (const p of programPages) {
         const validation = validateProgramPage(p.url, p.title, p.text);
-        if (!validation.ok || !validation.name) {
+        let name: string | null = validation.ok ? validation.name : null;
+        let nameFromAI = false;
+        // AI assist (spec §7): only when the URL structure is program-like but
+        // the title-derived name failed — AI name must appear in page content.
+        if (!name && validation.reason?.includes("title")) {
+          const aiRes = aiExtractByUrl.get(p.url);
+          const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+          const aiProg = (aiRes?.programs || []).find(
+            (pr) => pr.name && pr.evidenceQuote && key(p.text).includes(key(pr.name))
+          );
+          if (aiProg?.name && key(aiProg.name).length >= 4) {
+            name = aiProg.name.slice(0, 120);
+            nameFromAI = true;
+            progress(`Program title via AI (quote validated): '${name}' — ${p.url}`);
+          }
+        }
+        if (!name) {
           discoveryOnly.push({
             url: p.url, title: p.title, type: p.type,
             reason: validation.reason || "not a program-specific page",
           });
           continue;
         }
-        const name = validation.name.slice(0, 120);
+        void nameFromAI;
         const t = best(evidence, "annual_tuition");
         const newTuition = t ? toNumber(t.value) ?? undefined : undefined;
         const existing = findExistingProgram(current.programs, name, p.url);
