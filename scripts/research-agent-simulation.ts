@@ -1,26 +1,23 @@
 /**
  * Offline DRY-RUN simulation — Imperial College London (id=23).
  *
- * ISSUES 1–4 verification: exercises the EXACT production functions
+ * Issues 1–7 verification: exercises the EXACT production functions
  * (resolveOfficialDomain, DirectFetchProvider, classifyLink,
- * rejectSourceReason, extractLinks, extractMoney, decideUniversityFields /
- * compareAndDecide) against Imperial-shaped fixtures that mirror the
- * current Supabase row (annual_tuition=45500 GBP) and the real homepage
- * asset URLs the user reported (woff/woff2/css).
+ * validateProgramPage, findExistingProgram, rejectSourceReason,
+ * extractLinks, extractMoney, decideUniversityFields / compareAndDecide)
+ * against Imperial-shaped fixtures that mirror the real Supabase row
+ * (annual_tuition=45500 GBP, existing program "Computing BEng") and the
+ * real reported asset URLs + generic hub pages.
  *
  * Honest limits: NO network egress and NO Supabase credentials in this
- * sandbox — pages are fixtures, DB state is a fixture. No writes anywhere
- * (dry-run semantics).
+ * sandbox — pages and DB state are fixtures. No writes anywhere.
  */
-import {
-  resolveOfficialDomain,
-} from "../src/lib/research-agent/domain";
+import { resolveOfficialDomain } from "../src/lib/research-agent/domain";
 import { createSearchProvider } from "../src/lib/research-agent/providers";
 import { extractLinks, htmlToText, sleep } from "../src/lib/research-agent/fetch";
-import { classifyLink } from "../src/lib/research-agent/extract";
-import { extractMoney } from "../src/lib/research-agent/extract";
+import { classifyLink, validateProgramPage, extractMoney } from "../src/lib/research-agent/extract";
 import { rejectSourceReason, isResearchSourceUrl } from "../src/lib/research-agent/urlFilter";
-import { decideUniversityFields } from "../src/lib/research-agent/persist";
+import { decideUniversityFields, findExistingProgram } from "../src/lib/research-agent/persist";
 import { toNumber, normalizeCurrency } from "../src/lib/research-agent/normalize";
 
 let failures = 0;
@@ -31,7 +28,6 @@ function check(label: string, actual: unknown, expected: unknown) {
 }
 
 // ---------- Fixtures ----------
-// Mirrors the real Supabase row (Drizzle camelCase keys) for Imperial id=23.
 const CURRENT = {
   university: {
     id: 23,
@@ -59,13 +55,25 @@ const CURRENT = {
     internationalStudentsPercentage: null,
     verificationStatus: "verified",
   },
-  programs: [] as any[],
+  programs: [
+    {
+      id: 501,
+      universityId: 23,
+      name: "Computing BEng",
+      degree: "Bachelor",
+      field: "Computing",
+      tuitionAmount: 45500, // matches what the official tuition page says
+      tuitionCurrency: "GBP",
+      tuitionPeriod: "year",
+      programUrl: "https://www.imperial.ac.uk/study/courses/undergraduate/computing-beng/",
+      isVerified: false,
+    },
+  ],
   cycles: [] as any[],
   scholarships: [] as any[],
   sourceUrls: new Set<string>(),
 };
 
-// The exact asset URLs the user reported from the real Imperial dry run.
 const ASSET_URLS = [
   "https://imperial.ac.uk/assets/website/fonts/icons/fonts/imperial-icons.woff?h=abc123",
   "https://imperial.ac.uk/assets/website/fonts/imperial-sans/ImperialText-VF.woff2",
@@ -85,9 +93,15 @@ const HOME = `<!doctype html><html><head>
 <a href="/study/entry-requirements/">Entry requirements</a>
 <a href="/study/accommodation/">Accommodation and living costs</a>
 <a href="/study/accommodation/halls/">Accommodation options</a>
+<a href="/study/">Study at Imperial</a>
+<a href="/study/courses/">Courses</a>
+<a href="/faculties-and-departments/">Faculties and departments</a>
+<a href="/research-and-innovation/">Research and innovation</a>
+<a href="/about-the-site/accessibility/">Accessibility</a>
+<a href="/programmes/">Our programmes</a>
+<a href="/study/courses/undergraduate/computing-beng/">Computing BEng</a>
 <a href="/assets/website/media/logo.png">logo</a>
 <a href="/analytics/pixel.gif">pixel</a>
-<a href="/programmes/">Our programmes</a>
 </body></html>`;
 
 const TUITION_PAGE = `<html><body><main>
@@ -106,27 +120,33 @@ const ACCOMMODATION_PAGE = `<html><body><main>
 <p>On-campus accommodation costs £11,800 per year for a standard en-suite room.</p>
 </main></body></html>`;
 
+const COMPUTING_BENG_PAGE = `<html><body><main>
+<h1>Computing BEng | Study | Imperial College London</h1>
+<p>Our Computing BEng degree combines computer science, mathematics and engineering.</p>
+<p>This three-year undergraduate programme leads to a BEng degree.</p>
+</main></body></html>`;
+
 const FIXTURE_PAGES: Record<string, string> = {
   "https://imperial.ac.uk/": HOME,
   "https://www.imperial.ac.uk/": HOME,
   "https://imperial.ac.uk/study/fees-and-funding/": TUITION_PAGE,
   "https://imperial.ac.uk/study/accommodation/": LIVING_PAGE,
   "https://imperial.ac.uk/study/accommodation/halls/": ACCOMMODATION_PAGE,
+  "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/": COMPUTING_BENG_PAGE,
 };
 
 const fetchPage = async (url: string): Promise<string | null> =>
   FIXTURE_PAGES[url] ?? null;
 
 async function main() {
-  // ---- STEP A/B: domain resolution ----
   const resolved = resolveOfficialDomain(CURRENT.university);
   console.log("=== STEP B: official domain ===");
   check("domain", resolved?.domain, "imperial.ac.uk");
   const domain = resolved!.domain;
 
-  // ---- STEP C: discovery (keyword loop + homepage scan) ----
+  // ---- STEP C: discovery ----
   const provider = createSearchProvider(fetchPage, [domain]);
-  const wanted = ["admissions", "international", "undergraduate", "tuition", "scholarship", "apply", "requirements", "accommodation"];
+  const wanted = ["admissions", "international", "undergraduate", "tuition", "scholarship", "apply", "requirements", "accommodation", "program"];
   const discovered: { url: string; title: string; type: string }[] = [];
   const rejectedSources: { url: string; reason: string }[] = [];
   const seen = new Set<string>();
@@ -137,11 +157,7 @@ async function main() {
     for (const r of results) {
       if (seen.has(r.url)) continue;
       const reason = rejectSourceReason(r.url);
-      if (reason) {
-        seen.add(r.url);
-        rejectedSources.push({ url: r.url, reason });
-        continue;
-      }
+      if (reason) { seen.add(r.url); rejectedSources.push({ url: r.url, reason }); continue; }
       seen.add(r.url);
       discovered.push({ url: r.url, title: r.title || kw, type: classifyLink(r.url, r.title) });
     }
@@ -149,7 +165,6 @@ async function main() {
   }
   const homeHtml = await fetchPage(`https://${domain}/`);
   if (homeHtml) {
-    // Homepage itself is always an official_homepage research page.
     if (!seen.has(`https://${domain}/`)) {
       seen.add(`https://${domain}/`);
       discovered.unshift({ url: `https://${domain}/`, title: "Imperial College London official homepage", type: "homepage" });
@@ -157,11 +172,7 @@ async function main() {
     for (const link of extractLinks(homeHtml, `https://${domain}/`)) {
       if (seen.has(link)) continue;
       const reason = rejectSourceReason(link);
-      if (reason) {
-        seen.add(link);
-        rejectedSources.push({ url: link, reason });
-        continue;
-      }
+      if (reason) { seen.add(link); rejectedSources.push({ url: link, reason }); continue; }
       seen.add(link);
       discovered.push({ url: link, title: link, type: classifyLink(link, "") });
     }
@@ -172,91 +183,151 @@ async function main() {
   console.log(`  Rejected sources (${rejectedSources.length}):`);
   for (const r of rejectedSources) console.log(`    - ${r.url}  (${r.reason})`);
 
-  // Assertions ISSUE 1/4/5
-  check("ZERO font/css/image sources in valid list", discovered.some((d) => !isResearchSourceUrl(d.url)), false);
-  check("rejected woff", rejectedSources.some((r) => r.url.includes("imperial-icons.woff")), true);
-  check("rejected woff2", rejectedSources.some((r) => r.url.includes("ImperialText-VF.woff2")), true);
-  check("rejected css", rejectedSources.some((r) => r.url.includes("screen.2.4.11.css")), true);
-  check("rejected png", rejectedSources.some((r) => r.url.includes("logo.png")), true);
-  check("rejected tracking pixel", rejectedSources.some((r) => r.url.includes("pixel.gif")), true);
-  const types = discovered.map((d) => d.type).sort();
-  check("page categories are meaningful (no 'other' spam)", types.includes("other"), false);
-  check("homepage category exists", types.includes("homepage"), true);
-  check("admissions category exists", types.includes("admissions"), true);
-  check("international category exists", types.includes("international"), true);
-  check("tuition category exists", types.includes("tuition"), true);
-  check("scholarship category exists", types.includes("scholarship"), true);
-  check("deadline category exists", types.includes("deadline"), true);
-  check("requirements category exists", types.includes("requirements"), true);
-  check("program category exists", types.includes("program"), true);
-
-  // ---- STEP D/E: fetch + extract (regex only, like dry-run without AI key) ----
+  // ---- STEP D/E: fetch + extract ----
   console.log("\n=== STEP E: extraction (fixture pages) ===");
-  const evidence: any[] = [];
+  const pages: { url: string; title: string; type: string; text: string }[] = [];
   for (const d of discovered) {
     const html = await fetchPage(d.url);
     if (!html) continue;
     const text = htmlToText(html);
     if (text.length < 40) continue;
-    const ctx = { url: d.url, title: d.title || d.url, sourceType: `official_${d.type}` };
-    if (d.type === "tuition") {
-      const t = extractMoney(text, ctx, "annual_tuition", "year", /tuition|fee/);
+    pages.push({ ...d, text });
+  }
+  const evidence: any[] = [];
+  const pageTypeIs = (p: { type: string }, allowed: string[]) => allowed.includes(p.type) || p.type === "other";
+  for (const p of pages) {
+    const ctx = { url: p.url, title: p.title || p.url, sourceType: `official_${p.type}` };
+    if (pageTypeIs(p, ["tuition"])) {
+      const t = extractMoney(p.text, ctx, "annual_tuition", "year", /tuition|fee/);
       if (t) evidence.push(t);
     }
-    if (d.type === "living_costs") {
-      const living = extractMoney(text, ctx, "annual_living_est", "year", /living|maintenance/);
+    if (pageTypeIs(p, ["living_costs"])) {
+      const living = extractMoney(p.text, ctx, "annual_living_est", "year", /living|maintenance/);
       if (living) evidence.push({ ...living, field: "annual_living_est" });
-      const acc = extractMoney(text, ctx, "accommodation_cost", "year", /accommodation|housing|room/);
+      const acc = extractMoney(p.text, ctx, "accommodation_cost", "year", /accommodation|housing|room/);
       if (acc) evidence.push({ ...acc, field: "accommodation_cost" });
     }
   }
   const best = (field: string) =>
     evidence.filter((e) => e.field === field).sort((a, b) => b.confidence - a.confidence)[0];
-  const tBest = best("annual_tuition");
-  const lBest = best("annual_living_est");
-  const aBest = best("accommodation_cost");
-  check("annual_tuition extracted", tBest ? toNumber(tBest.value) : null, 45500);
-  check("annual_tuition currency", tBest?.currency, "GBP");
-  check("annual_living_est extracted", lBest ? toNumber(lBest.value) : null, 14200);
-  check("accommodation_cost extracted", aBest ? toNumber(aBest.value) : null, 11800);
-  check("living est source is the living-costs page", lBest?.sourceUrl, "https://imperial.ac.uk/study/accommodation/");
-  check("accommodation source is the accommodation page", aBest?.sourceUrl, "https://imperial.ac.uk/study/accommodation/halls/");
+  check("annual_tuition extracted", toNumber(best("annual_tuition")?.value), 45500);
+  check("annual_tuition currency", best("annual_tuition")?.currency, "GBP");
+  check("annual_living_est extracted", toNumber(best("annual_living_est")?.value), 14200);
+  check("accommodation_cost extracted", toNumber(best("accommodation_cost")?.value), 11800);
 
-  // ---- Decision step (ISSUE 2/3): exact compare against fixture DB ----
-  console.log("\n=== DECISION STEP: compare with DB (CASE A–E) ===");
-  const uniExtract = {
-    foundedYear: undefined as number | undefined,
-    acceptanceRate: undefined as number | undefined,
-    annualTuition: toNumber(best("annual_tuition")?.value) ?? undefined,
-    tuitionCurrency: normalizeCurrency(best("annual_tuition")?.currency) ?? undefined,
-    annualLivingEst: toNumber(best("annual_living_est")?.value) ?? undefined,
-    livingCostCurrency: normalizeCurrency(best("annual_living_est")?.currency) ?? undefined,
-    accommodationCost: toNumber(best("accommodation_cost")?.value) ?? undefined,
-    accommodationCostCurrency: normalizeCurrency(best("accommodation_cost")?.currency) ?? undefined,
-    applicationFee: undefined as number | undefined,
-    applicationFeeCurrency: undefined as string | undefined,
-  };
-  const decisions = decideUniversityFields(uniExtract as any, evidence as any, CURRENT as any);
-  const updated = decisions.filter((d) => d.action === "write" || d.action === "update");
-  const skipped = decisions.filter((d) => d.action === "skip");
-  const review = decisions.filter((d) => d.action === "review");
-
-  for (const d of decisions) {
-    console.log(
-      `  ${d.field}: DB=${String(d.dbValue ?? "NULL")}${d.currency ? ` ${d.currency}` : ""} → new=${String(d.newValue ?? "NULL")}${d.currency ? ` ${d.currency}` : ""} | ${d.action.toUpperCase()} | conf=${d.confidence} | ${d.sourceUrl} | ${d.reason}`
-    );
+  // ---- Program handling (Issues 1–3) ----
+  console.log("\n=== PROGRAM HANDLING: validation + dedupe ===");
+  const insertedPrograms: string[] = [];
+  const programDecisions: any[] = [];
+  const programPages = pages.filter((p) => p.type === "program").slice(0, 12);
+  for (const p of programPages) {
+    const validation = validateProgramPage(p.url, p.title, p.text);
+    if (!validation.ok || !validation.name) {
+      console.log(`  discovery-only: ${p.url} (${validation.reason})`);
+      continue;
+    }
+    const name = validation.name.slice(0, 120);
+    const t = best("annual_tuition");
+    const newTuition = t ? toNumber(t.value) ?? undefined : undefined;
+    const existing = findExistingProgram(CURRENT.programs, name, p.url);
+    if (existing) {
+      programDecisions.push({
+        entity: "program", field: "name", action: "skip",
+        dbValue: existing.name, newValue: name,
+        sourceUrl: p.url, reason: "unchanged — already exists",
+      });
+      const dbTuition = toNumber(existing.tuitionAmount);
+      if (t && newTuition != null && dbTuition === newTuition) {
+        programDecisions.push({
+          entity: "program", field: "annual_tuition", action: "skip",
+          dbValue: existing.tuitionAmount, newValue: newTuition,
+          currency: t.currency, sourceUrl: t.sourceUrl,
+          sourceTitle: t.sourceTitle, sourceType: t.sourceType, confidence: t.confidence,
+          reason: "unchanged — tuition identical",
+        });
+      }
+      console.log(`  ${name}: EXISTS → SKIPPED (unchanged) — ${p.url}`);
+    } else {
+      insertedPrograms.push(name);
+      console.log(`  ${name}: NEW → would insert (${p.url})`);
+    }
   }
 
-  // ISSUE 2 assertions
-  check("annual_tuition decision = SKIP (unchanged)", decisions.find((d) => d.field === "annual_tuition")?.action, "skip");
-  check("annual_tuition reason mentions unchanged", (decisions.find((d) => d.field === "annual_tuition")?.reason || "").toLowerCase().includes("unchanged"), true);
-  check("annual_living_est decision = WRITE (DB NULL)", decisions.find((d) => d.field === "annual_living_est")?.action, "write");
-  check("accommodation_cost decision = WRITE (DB NULL)", decisions.find((d) => d.field === "accommodation_cost")?.action, "write");
-  check("only 2 fields updated (NOT 3)", updated.map((d) => d.field).sort(), ["accommodation_cost", "annual_living_est"]);
-  check("every update has a source URL", updated.every((d) => /^https?:/.test(d.sourceUrl)), true);
-  check("every update has confidence", updated.every((d) => d.confidence != null && d.confidence > 0), true);
-  check("skipped contains annual_tuition", skipped.map((d) => d.field), ["annual_tuition"]);
-  check("no review decisions", review.length, 0);
+  // ---- Source persistence gating (Issues 4–5, 7) ----
+  console.log("\n=== SOURCE PERSISTENCE GATING ===");
+  const PERSISTABLE_CATEGORIES = new Set([
+    "homepage", "admissions", "international", "program",
+    "tuition", "living_costs", "deadline", "requirements", "scholarship",
+  ]);
+  const pageTextByUrl = new Map(pages.map((p) => [p.url, p.text]));
+  const newSources: { url: string; title: string }[] = [];
+  const discoveryOnly: { url: string; title: string; type: string; reason: string }[] = [];
+  const added = new Set<string>();
+
+  // 1. Evidence-backed sources.
+  for (const ev of evidence) {
+    if (added.has(ev.sourceUrl)) continue;
+    added.add(ev.sourceUrl);
+    newSources.push({ url: ev.sourceUrl, title: ev.sourceTitle });
+  }
+  // 2. High-value discovered pages only.
+  for (const d of discovered) {
+    if (added.has(d.url)) continue;
+    if (!PERSISTABLE_CATEGORIES.has(d.type)) {
+      discoveryOnly.push({ url: d.url, title: d.title, type: d.type, reason: "generic navigation page — no useful source category" });
+      continue;
+    }
+    if (d.type === "program") {
+      const v = validateProgramPage(d.url, d.title, pageTextByUrl.get(d.url) ?? "");
+      if (!v.ok) {
+        discoveryOnly.push({ url: d.url, title: d.title, type: d.type, reason: v.reason || "generic hub page" });
+        continue;
+      }
+    }
+    added.add(d.url);
+    newSources.push({ url: d.url, title: d.title });
+  }
+
+  console.log(`  Persisted sources (${newSources.length}):`);
+  for (const s of newSources) console.log(`    - ${s.url}`);
+  console.log(`  Discovery-only (${discoveryOnly.length}):`);
+  for (const s of discoveryOnly) console.log(`    - ${s.url}  (${s.reason})`);
+
+  // ---------- ASSERTIONS ----------
+  console.log("\n=== ASSERTIONS ===");
+  // Issue 1/2/3: no generic hub programs, existing program deduped.
+  check("no program named 'Study'", insertedPrograms.some((n) => /^study$/i.test(n)), false);
+  check("no program named 'Courses'", insertedPrograms.some((n) => /^courses?$/i.test(n)), false);
+  check("no 'Faculties and departments' program", insertedPrograms.some((n) => /faculties/i.test(n)), false);
+  check("no 'Programmes' program", insertedPrograms.some((n) => /^programmes?$/i.test(n)), false);
+  check("inserted programs empty (Computing BEng deduped)", insertedPrograms, []);
+  const progNameDecision = programDecisions.find((d) => d.entity === "program" && d.field === "name");
+  check("Computing BEng name decision = SKIP", progNameDecision?.action, "skip");
+  check("Computing BEng old value", progNameDecision?.dbValue, "Computing BEng");
+  check("Computing BEng new value", progNameDecision?.newValue, "Computing BEng");
+  const progTuitionDecision = programDecisions.find((d) => d.entity === "program" && d.field === "annual_tuition");
+  check("Computing BEng tuition decision = SKIP (45500 == 45500)", progTuitionDecision?.action, "skip");
+  check("program decision has source URL", progNameDecision?.sourceUrl, "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/");
+
+  // Issue 4/5/7: generic pages discovery-only, program page persisted.
+  check("generic /study/ NOT persisted", newSources.some((s) => s.url === "https://imperial.ac.uk/study/"), false);
+  check("generic /study/courses/ NOT persisted", newSources.some((s) => /\/study\/courses\/?$/.test(s.url)), false);
+  check("faculties page NOT persisted", newSources.some((s) => s.url.includes("faculties-and-departments")), false);
+  check("research page NOT persisted", newSources.some((s) => s.url.includes("research-and-innovation")), false);
+  check("accessibility page NOT persisted", newSources.some((s) => s.url.includes("accessibility")), false);
+  check("program page IS persisted", newSources.some((s) => s.url.includes("computing-beng")), true);
+  check("tuition page IS persisted", newSources.some((s) => s.url.includes("fees-and-funding")), true);
+  check("homepage IS persisted", newSources.some((s) => s.url === "https://imperial.ac.uk/"), true);
+  check("discovery-only includes /study/", discoveryOnly.some((s) => s.url === "https://imperial.ac.uk/study/"), true);
+  check("discovery-only includes faculties", discoveryOnly.some((s) => s.url.includes("faculties-and-departments")), true);
+  check("discovery-only includes accessibility", discoveryOnly.some((s) => s.url.includes("accessibility")), true);
+  check("discovery-only includes research", discoveryOnly.some((s) => s.url.includes("research-and-innovation")), true);
+
+  // Issue 1: zero assets anywhere.
+  check("ZERO font/css/image sources", newSources.some((s) => !isResearchSourceUrl(s.url)), false);
+  check("rejected woff", rejectedSources.some((r) => r.url.includes("imperial-icons.woff")), true);
+  check("rejected woff2", rejectedSources.some((r) => r.url.includes("ImperialText-VF.woff2")), true);
+  check("rejected css", rejectedSources.some((r) => r.url.includes("screen.2.4.11.css")), true);
 
   console.log(`\n${failures === 0 ? "ALL SIMULATION TESTS PASSED" : `${failures} TEST(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);

@@ -158,6 +158,8 @@ export interface ExtractionResult {
 export type WriteAction = "write" | "update" | "skip" | "review";
 
 export interface FieldDecision {
+  /** Entity the decision applies to: "university", "program", "program.tuition", ... */
+  entity?: string;
   field: string;
   action: WriteAction;
   dbValue: unknown;
@@ -188,6 +190,8 @@ export interface AuditReport {
   reviewRequired: (string | FieldDecision)[];
   /** URLs rejected during discovery/persistence (fonts, css, tracking...). */
   rejectedSources: { url: string; reason: string }[];
+  /** Crawled same-domain pages kept for discovery only — NOT persisted as sources. */
+  discoveryOnly: { url: string; title: string; type: string; reason: string }[];
   errors: string[];
   sourcesReadBack: number;
   duplicatesPrevented: number;

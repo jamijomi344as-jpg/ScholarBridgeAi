@@ -68,6 +68,7 @@ export function buildReport(input: {
   insertedScholarships: string[];
   newSources: { url: string; title: string }[];
   rejectedSources: { url: string; reason: string }[];
+  discoveryOnly: { url: string; title: string; type: string; reason: string }[];
   errors: string[];
   sourcesReadBack: number;
   duplicatesPrevented: number;
@@ -85,6 +86,7 @@ export function buildReport(input: {
     skippedFields: input.skippedFields,
     reviewRequired: input.reviewRequired,
     rejectedSources: input.rejectedSources,
+    discoveryOnly: input.discoveryOnly,
     errors: input.errors,
     sourcesReadBack: input.sourcesReadBack,
     duplicatesPrevented: input.duplicatesPrevented,

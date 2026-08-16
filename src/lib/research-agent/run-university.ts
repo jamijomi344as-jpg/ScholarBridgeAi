@@ -7,6 +7,7 @@ import { resolveOfficialDomain, pickOfficialDomainFromSearch } from "./domain";
 import {
   classifyLink,
   isMeaningfulSourceTitle,
+  validateProgramPage,
   extractMoney,
   extractNumberReq,
   extractRequiredFlag,
@@ -23,6 +24,7 @@ import {
   writeUniversity,
   decideUniversityFields,
   upsertProgram,
+  findExistingProgram,
   upsertRequirements,
   upsertCycle,
   upsertScholarship,
@@ -52,6 +54,7 @@ export async function runUniversity(
   const insertedScholarships: string[] = [];
   const newSources: { url: string; title: string }[] = [];
   const rejectedSources: { url: string; reason: string }[] = [];
+  const discoveryOnly: { url: string; title: string; type: string; reason: string }[] = [];
   const evidence: SourceEvidence[] = [];
   let universityName = `#${universityId}`;
   let sourcesReadBack = 0;
@@ -92,7 +95,7 @@ export async function runUniversity(
       const report = buildReport({
         universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
         insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-        newSources, rejectedSources, errors, sourcesReadBack, duplicatesPrevented,
+        newSources, rejectedSources, discoveryOnly, errors, sourcesReadBack, duplicatesPrevented,
       });
       await logRunFinish(logId, report);
       return report;
@@ -295,24 +298,105 @@ export async function runUniversity(
       }
     }
 
-    // Programs (spec §3E)
+    // Programs (spec §3E) — ONLY real program pages become program records.
+    // Generic hubs (/study/, /study/courses/, /faculties-and-departments/,
+    // /research-and-innovation/) are discovery-only pages, never programs.
     if (scopes.includes("programs")) {
       progress("Processing programs...");
       const programPages = pages.filter((p) => p.type === "program").slice(0, AGENT_CONFIG.maxPrograms);
       for (const p of programPages) {
-        const name = p.title.replace(/\s*[-|]\s*.*$/, "").trim() || "Program";
+        const validation = validateProgramPage(p.url, p.title, p.text);
+        if (!validation.ok || !validation.name) {
+          discoveryOnly.push({
+            url: p.url, title: p.title, type: p.type,
+            reason: validation.reason || "not a program-specific page",
+          });
+          continue;
+        }
+        const name = validation.name.slice(0, 120);
         const t = best(evidence, "annual_tuition");
+        const newTuition = t ? toNumber(t.value) ?? undefined : undefined;
+        const existing = findExistingProgram(current.programs, name, p.url);
         const prog = {
-          name: name.slice(0, 120),
-          annualTuition: t ? toNumber(t.value) ?? undefined : undefined,
+          name,
+          annualTuition: newTuition,
           tuitionCurrency: t?.currency,
+          officialUrl: p.url,
         };
-        if (!dryRun) {
-          const res = await upsertProgram(universityId, prog, p.url);
-          if (res.inserted) insertedPrograms.push(prog.name);
-          else duplicatesPrevented += 1;
+
+        if (existing) {
+          // Dedupe hit (university_id + normalized name OR canonical URL).
+          skippedFields.push({
+            entity: "program",
+            field: "name",
+            action: "skip",
+            dbValue: existing.name,
+            newValue: name,
+            sourceUrl: p.url,
+            sourceTitle: p.title || p.url,
+            sourceType: `official_${p.type}`,
+            confidence: 1,
+            reason: "CASE B: unchanged — program already exists (university_id + normalized name)",
+          });
+          progress(`Program '${name}' already exists — SKIPPED (unchanged)`);
+
+          // Tuition: UPDATED only when a real field changed AND the existing
+          // row is unverified (never weaken verified data).
+          const dbTuition = toNumber(existing.tuitionAmount);
+          if (t && newTuition != null && dbTuition !== newTuition && !existing.isVerified) {
+            updatedFields.push({
+              entity: "program",
+              field: "annual_tuition",
+              action: "update",
+              dbValue: existing.tuitionAmount,
+              newValue: newTuition,
+              currency: t.currency,
+              sourceUrl: t.sourceUrl,
+              sourceTitle: t.sourceTitle,
+              sourceType: t.sourceType,
+              confidence: t.confidence,
+              reason: "CASE C: program tuition changed — official source supersedes unverified value",
+            });
+            progress(`Program '${name}' tuition ${String(existing.tuitionAmount ?? "NULL")} → ${newTuition} ${t.currency ?? ""} — UPDATED`);
+          } else if (t && newTuition != null && dbTuition === newTuition) {
+            skippedFields.push({
+              entity: "program",
+              field: "annual_tuition",
+              action: "skip",
+              dbValue: existing.tuitionAmount,
+              newValue: newTuition,
+              currency: t.currency,
+              sourceUrl: t.sourceUrl,
+              sourceTitle: t.sourceTitle,
+              sourceType: t.sourceType,
+              confidence: t.confidence,
+              reason: "CASE B: unchanged — program tuition identical to DB",
+            });
+          } else if (t && newTuition != null && existing.isVerified) {
+            skippedFields.push({
+              entity: "program",
+              field: "annual_tuition",
+              action: "skip",
+              dbValue: existing.tuitionAmount,
+              newValue: newTuition,
+              currency: t.currency,
+              sourceUrl: t.sourceUrl,
+              sourceTitle: t.sourceTitle,
+              sourceType: t.sourceType,
+              confidence: t.confidence,
+              reason: "CASE E: program verified — new source is not clearly stronger; verified data kept",
+            });
+          }
+          if (!dryRun) {
+            await upsertProgram(universityId, prog, p.url);
+          }
         } else {
-          insertedPrograms.push(prog.name);
+          progress(`New program found: '${name}' — would insert`);
+          insertedPrograms.push(name);
+          if (!dryRun) {
+            const res = await upsertProgram(universityId, prog, p.url);
+            if (!res.inserted) duplicatesPrevented += 1;
+          }
         }
       }
     }
@@ -384,11 +468,22 @@ export async function runUniversity(
       }
     }
 
-    // Sources (spec §4, §5) — only real research pages are saved:
-    // HTML pages, official PDFs, official document pages. Fonts, CSS, JS,
-    // images, tracking endpoints and generic asset paths are rejected.
+    // Sources (spec §4, §5, §7) — DISCOVERY PAGE != EVIDENCE PAGE.
+    // Only two kinds of pages are persisted as sources:
+    //  1. pages that support a specific extracted field (evidence-backed), and
+    //  2. high-value canonical pages with a useful source category:
+    //     homepage, admissions, international, program (validated),
+    //     tuition, living_costs, deadline, requirements, scholarship.
+    // Generic navigation pages (/about-the-site/accessibility/, /faculties-...,
+    // /research-and-innovation/, generic /study/) stay discovery-only and are
+    // reported in report.discoveryOnly — never persisted.
     if (scopes.includes("sources")) {
       progress("Persisting verified sources...");
+      const PERSISTABLE_CATEGORIES = new Set([
+        "homepage", "admissions", "international", "program",
+        "tuition", "living_costs", "deadline", "requirements", "scholarship",
+      ]);
+      const pageTextByUrl = new Map(pages.map((p) => [p.url, p.text]));
       const isAcceptableSource = (url: string, title: string, type: string): { ok: boolean; reason?: string } => {
         const reason = rejectSourceReason(url);
         if (reason) return { ok: false, reason };
@@ -398,7 +493,42 @@ export async function runUniversity(
         }
         return { ok: true };
       };
+      /** High-value page gate: useful category AND (for programs) real program page. */
+      const canPersistDiscovered = (d: { url: string; title: string; type: string }): { ok: boolean; reason?: string } => {
+        if (!PERSISTABLE_CATEGORIES.has(d.type)) {
+          return { ok: false, reason: "generic navigation page — no useful source category (discovery only)" };
+        }
+        if (d.type === "program") {
+          const v = validateProgramPage(d.url, d.title, pageTextByUrl.get(d.url) ?? "");
+          if (!v.ok) return { ok: false, reason: v.reason || "generic hub page (discovery only)" };
+        }
+        return { ok: true };
+      };
 
+      const persistPage = async (d: { url: string; title: string; type: string }) => {
+        if (!dryRun) {
+          const dc = ctxFor(d);
+          const res = await upsertSource(
+            { field: "page_discovered", value: d.url, sourceUrl: dc.url, sourceTitle: dc.title, sourceType: dc.sourceType, exactEvidence: "discovered", confidence: 1 },
+            universityId
+          );
+          if (res.rejected) {
+            rejectedSources.push({ url: d.url, reason: res.rejected });
+            return;
+          }
+          if (res.inserted) newSources.push({ url: dc.url, title: dc.title });
+          if (res.duplicate) duplicatesPrevented += 1;
+        } else {
+          const check = isAcceptableSource(d.url, d.title, ctxFor(d).sourceType);
+          if (!check.ok) {
+            rejectedSources.push({ url: d.url, reason: check.reason! });
+            return;
+          }
+          newSources.push({ url: d.url, title: d.title });
+        }
+      };
+
+      // 1. Evidence-backed sources (always persist — they support a field).
       if (!dryRun) {
         for (const ev of evidence.filter((e) => e.field !== "source_discovered")) {
           const res = await upsertSource(ev, universityId);
@@ -407,19 +537,6 @@ export async function runUniversity(
             continue;
           }
           if (res.inserted) newSources.push({ url: ev.sourceUrl, title: ev.sourceTitle });
-          if (res.duplicate) duplicatesPrevented += 1;
-        }
-        for (const d of discovered.slice(0, maxPages)) {
-          const dc = ctxFor(d);
-          const res = await upsertSource(
-            { field: "page_discovered", value: d.url, sourceUrl: dc.url, sourceTitle: dc.title, sourceType: dc.sourceType, exactEvidence: "discovered", confidence: 1 },
-            universityId
-          );
-          if (res.rejected) {
-            rejectedSources.push({ url: d.url, reason: res.rejected });
-            continue;
-          }
-          if (res.inserted) newSources.push({ url: dc.url, title: dc.title });
           if (res.duplicate) duplicatesPrevented += 1;
         }
       } else {
@@ -435,16 +552,16 @@ export async function runUniversity(
           added.add(ev.sourceUrl);
           newSources.push({ url: ev.sourceUrl, title: ev.sourceTitle });
         }
-        for (const d of discovered.slice(0, maxPages)) {
-          if (added.has(d.url)) continue;
-          const check = isAcceptableSource(d.url, d.title, ctxFor(d).sourceType);
-          if (!check.ok) {
-            rejectedSources.push({ url: d.url, reason: check.reason! });
-            continue;
-          }
-          added.add(d.url);
-          newSources.push({ url: d.url, title: d.title });
+      }
+
+      // 2. High-value discovered pages only — generic navigation stays crawl-only.
+      for (const d of discovered.slice(0, maxPages)) {
+        const gate = canPersistDiscovered(d);
+        if (!gate.ok) {
+          discoveryOnly.push({ url: d.url, title: d.title, type: d.type, reason: gate.reason! });
+          continue;
         }
+        await persistPage(d);
       }
     }
 
@@ -456,7 +573,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, rejectedSources, errors, sourcesReadBack, duplicatesPrevented,
+      newSources, rejectedSources, discoveryOnly, errors, sourcesReadBack, duplicatesPrevented,
     });
     progress("Audit complete.");
     await logRunFinish(logId, report);
@@ -467,7 +584,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, rejectedSources, errors, sourcesReadBack, duplicatesPrevented,
+      newSources, rejectedSources, discoveryOnly, errors, sourcesReadBack, duplicatesPrevented,
     });
     await logRunFinish(logId, report, String(err?.message || err));
     return report;

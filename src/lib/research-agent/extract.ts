@@ -152,6 +152,122 @@ export function extractDeadline(text: string, ctx: ExtractCtx): SourceEvidence |
 }
 
 /** Classify a link by URL+label patterns. */
+/** Words/slugs that denote generic hub or navigation pages — never a program. */
+export const GENERIC_PAGE_SLUGS = new Set([
+  "study", "studies", "courses", "course", "programmes", "programme", "programs", "program",
+  "departments", "department", "faculties", "faculty", "faculties-and-departments",
+  "research", "research-and-innovation", "innovation", "about", "about-the-site", "news",
+  "events", "contact", "accessibility", "sitemap", "search", "privacy", "terms", "cookies",
+  "jobs", "alumni", "staff", "students", "home", "index", "admissions", "admission",
+  "apply", "application", "tuition", "fees", "funding", "scholarships", "scholarship",
+  "requirements", "accommodation", "international", "undergraduate", "postgraduate",
+  "global", "campus", "campuses", "library", "sport", "museums", "business", "login", "signup",
+]);
+
+export function isGenericSlug(slug: string): boolean {
+  return GENERIC_PAGE_SLUGS.has(slug.toLowerCase());
+}
+
+/** Map lowercase degree tokens → canonical display form (BEng, MSc, PhD...). */
+const DEGREE_TOKEN_MAP: Record<string, string> = {
+  beng: "BEng", meng: "MEng", bsc: "BSc", msc: "MSc", ba: "BA", ma: "MA",
+  bba: "BBA", llb: "LLB", llm: "LLM", phd: "PhD", mphil: "MPhil", mres: "MRes",
+  mbbs: "MBBS", bmus: "BMus", med: "MEd", bed: "BEd", mba: "MBA",
+  pgce: "PGCE", mfa: "MFA", bfa: "BFA",
+};
+
+/** Title-case a URL slug into a program name: "computing-beng" → "Computing BEng". */
+export function programNameFromSlug(slug: string): string {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((tok) => {
+      const lower = tok.toLowerCase();
+      if (DEGREE_TOKEN_MAP[lower]) return DEGREE_TOKEN_MAP[lower];
+      return tok.charAt(0).toUpperCase() + tok.slice(1);
+    })
+    .join(" ");
+}
+
+/**
+ * Extract a program name from a page title, stripping site-brand and generic
+ * trailing segments ("Computing BEng | Study | Imperial College London" →
+ * "Computing BEng"). Returns null when no non-generic name is present.
+ */
+export function programNameFromTitle(title: string): string | null {
+  const parts = (title || "")
+    .split(/[|–—-]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (/^https?:\/\//i.test(part) || part.includes("/")) continue; // URL, not a name
+    if (isGenericSlug(part)) continue;
+    if (/university|college|institute|school of/i.test(lower) && parts.length > 1) continue;
+    if (lower.length < 4) continue;
+    return part;
+  }
+  return null;
+}
+
+export interface ProgramPageValidation {
+  ok: boolean;
+  name: string | null;
+  reason?: string;
+}
+
+/**
+ * Validate that a crawled page is a REAL program/course page, not a generic
+ * hub or navigation page (spec §3E, §23).
+ *
+ * Required:
+ *  - URL is a real HTML/PDF page with a program-like path structure
+ *    (contains /courses/, /programme/, /program/, /degree/ ... and the last
+ *    path segment is a non-generic course slug)
+ *  - page title yields a non-generic program name
+ *  - the page content actually contains that program name
+ */
+export function validateProgramPage(url: string, title: string, text: string): ProgramPageValidation {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return { ok: false, name: null, reason: "invalid URL" };
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") {
+    return { ok: false, name: null, reason: "not an HTTP(S) page" };
+  }
+  const path = u.pathname.toLowerCase();
+  const lastSegment = path.split("/").filter(Boolean).pop() || "";
+
+  // 1. Program-like URL structure required (generic hubs rejected).
+  const hasProgramPath = /(^|\/)(courses?|programs?|programmes?|degrees?|majors?|pathways?)\//.test(path);
+  if (!hasProgramPath || isGenericSlug(lastSegment)) {
+    return {
+      ok: false,
+      name: null,
+      reason: isGenericSlug(lastSegment)
+        ? `generic hub/navigation page (path ends in '${lastSegment}')`
+        : "no program-specific URL structure",
+    };
+  }
+
+  // 2. Non-generic program name from the title (URL slug as fallback).
+  const nameFromTitle = programNameFromTitle(title);
+  const name = nameFromTitle || programNameFromSlug(lastSegment);
+  if (!name || isGenericSlug(name)) {
+    return { ok: false, name: null, reason: "page title is not program-specific" };
+  }
+
+  // 3. The page content must contain the program/course name.
+  const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (text && key(name).length >= 4 && !key(text).includes(key(name))) {
+    return { ok: false, name: null, reason: "page content does not mention the program name" };
+  }
+
+  return { ok: true, name };
+}
+
 /**
  * Classify a same-domain page into a research-source category.
  * Categories (spec §3D, §23): homepage, admissions, international, program,
@@ -161,11 +277,22 @@ export function extractDeadline(text: string, ctx: ExtractCtx): SourceEvidence |
  */
 export function classifyLink(url: string, label: string): string {
   const l = `${url} ${label}`.toLowerCase();
+  let path = "";
   try {
     const u = new URL(url);
+    path = u.pathname.toLowerCase();
     if (u.pathname === "/" || u.pathname === "") return "homepage";
   } catch {
     // fall through to pattern matching
+  }
+  const lastSegment = path.split("/").filter(Boolean).pop() || "";
+  // Structured program check FIRST: /courses/undergraduate/computing-beng/ is
+  // a program page, never an "admissions" or "study hub" page.
+  if (
+    /(^|\/)(courses?|programs?|programmes?|degrees?|majors?|pathways?)\//.test(path) &&
+    !isGenericSlug(lastSegment)
+  ) {
+    return "program";
   }
   if (/international/.test(l)) return "international";
   if (/undergraduate|first-year|firstyear/.test(l)) return "admissions";
@@ -179,7 +306,9 @@ export function classifyLink(url: string, label: string): string {
   if (/living|accommodation|housing/.test(l)) return "living_costs";
   if (/tuition|fees?|cost|financial/.test(l)) return "tuition";
   if (/requirement|english|ielts|toefl|entry.requirement/.test(l)) return "requirements";
-  if (/program|degree|major|courses?|study/.test(l)) return "program";
+  // Generic program hub pages (/courses/, /programmes/) — classified program,
+  // but validateProgramPage() rejects them before they become records.
+  if (/(^|\/)(courses?|programs?|programmes?|degrees?)(\/|$)/.test(path)) return "program";
   return "other";
 }
 

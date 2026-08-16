@@ -128,6 +128,7 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
   const skippedCount = report?.skippedFields?.length ?? 0;
   const reviewCount = report?.reviewRequired?.length ?? 0;
   const rejectedCount = report?.rejectedSources?.length ?? 0;
+  const discoveryOnlyCount = report?.discoveryOnly?.length ?? 0;
   const errorCount = report?.errors?.length ?? 0;
 
   return (
@@ -259,13 +260,14 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
             Audit Report — {report.universityName} {report.dryRun ? "(dry run)" : ""}
           </div>
           <div className="p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
               {[
                 { label: "Updated", value: updatedCount, cls: "text-indigo-700" },
                 { label: "Inserted", value: insertedCount, cls: "text-emerald-700" },
                 { label: "Skipped", value: skippedCount, cls: "text-slate-500" },
                 { label: "Review req.", value: reviewCount, cls: "text-amber-700" },
                 { label: "Rejected", value: rejectedCount, cls: "text-red-700" },
+                { label: "Discovery-only", value: discoveryOnlyCount, cls: "text-slate-400" },
                 { label: "Errors", value: errorCount, cls: "text-red-700" },
               ].map((s) => (
                 <div key={s.label} className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
@@ -282,7 +284,7 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
                   {report.updatedFields.map((f: any, i: number) => (
                     <div key={i} className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2.5 py-1.5 text-[11px]">
                       <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-indigo-700">{f.field}</span>
+                        <span className="font-extrabold text-indigo-700">{f.entity ? `${f.entity}.` : ""}{f.field}</span>
                         <span className="text-[9px] font-black uppercase tracking-wide text-indigo-500">{f.action}</span>
                         {f.confidence != null && (
                           <span className="ml-auto text-[10px] text-slate-500">confidence {(Number(f.confidence) * 100).toFixed(0)}%</span>
@@ -310,7 +312,7 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
                     <p key={i} className="text-[11px] text-slate-500">
                       {typeof s === "string" ? s : (
                         <>
-                          <b className="text-slate-600">{s.field}</b>{" "}
+                          <b className="text-slate-600">{s.entity ? `${s.entity}.` : ""}{s.field}</b>{" "}
                           {String(s.dbValue ?? "NULL")}{s.currency ? ` ${s.currency}` : ""} → {String(s.newValue ?? "NULL")}{s.currency ? ` ${s.currency}` : ""} — {s.reason}
                         </>
                       )}
@@ -353,13 +355,25 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
               </div>
             )}
             {report.newSources.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Sources ({report.newSources.length})</p>
+              <div className="mb-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Persisted sources ({report.newSources.length})</p>
                 {report.newSources.slice(0, 15).map((s: any) => (
                   <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-indigo-600 hover:underline truncate">
                     {s.title || s.url}
                   </a>
                 ))}
+              </div>
+            )}
+            {report.discoveryOnly?.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Discovery-only pages ({report.discoveryOnly.length}) — crawled, NOT persisted</p>
+                <div className="max-h-24 overflow-y-auto space-y-0.5">
+                  {report.discoveryOnly.slice(0, 20).map((s: any, i: number) => (
+                    <p key={i} className="text-[10px] text-slate-400 truncate">
+                      {s.url} <span className="text-slate-300">({s.reason})</span>
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
           </div>

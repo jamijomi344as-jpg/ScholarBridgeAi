@@ -18,7 +18,7 @@ import {
   scholarshipSources,
 } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { normalizeNameKey, normalizeUrl, toIsoDate } from "./normalize";
+import { normalizeNameKey, normalizeUrl, toIsoDate, toNumber } from "./normalize";
 import { canMarkVerified } from "./validate";
 import { compareAndDecide } from "./compare";
 import { rejectSourceReason, isResearchSourceUrl } from "./urlFilter";
@@ -255,20 +255,48 @@ export async function writeUniversity(
   };
 }
 
-/** Upsert a program (dedupe: university_id + normalized name). */
+/** Canonical page URL for dedupe: no query/hash/trailing slash, www-stripped. */
+export function canonicalPageUrl(url: string): string {
+  return normalizeUrl(url).replace(/^https?:\/\/(www\.)/i, "https://");
+}
+
+/** Find an existing program row by normalized name OR canonical official URL. */
+export function findExistingProgram(
+  programs: Record<string, any>[],
+  name: string,
+  officialUrl: string
+): Record<string, any> | null {
+  const key = normalizeNameKey(name);
+  const urlKey = canonicalPageUrl(officialUrl);
+  return (
+    programs.find((x) => x.universityId != null && normalizeNameKey(x.name || "") === key) ||
+    programs.find((x) => x.programUrl && canonicalPageUrl(String(x.programUrl)) === urlKey) ||
+    null
+  );
+}
+
+/**
+ * Upsert a program.
+ * Dedupe: university_id + normalized name, PLUS canonical official-URL match
+ * (a discovered "Computing BEng" at imperial.ac.uk/... must match an existing
+ * "Computing BEng" at www.imperial.ac.uk/...). Returns what WOULD change.
+ */
 export async function upsertProgram(
   universityId: number,
   p: ExtractedProgram,
   sourceUrl: string
-): Promise<{ programId: number | null; inserted: boolean }> {
+): Promise<{ programId: number | null; inserted: boolean; updated: string[]; unchanged: boolean }> {
   try {
-    const key = normalizeNameKey(p.name);
-    const existing = (await db.select().from(universityPrograms)).find(
-      (x) => x.universityId === universityId && normalizeNameKey(x.name) === key
+    const existing = findExistingProgram(
+      await db.select().from(universityPrograms),
+      p.name,
+      p.officialUrl || sourceUrl
     );
     if (existing) {
-      // Update only unverified programs (never weaken verified).
-      if (!existing.isVerified && p.annualTuition != null) {
+      // Update only unverified programs (never weaken verified) and only
+      // when a real field changed.
+      const updated: string[] = [];
+      if (!existing.isVerified && p.annualTuition != null && toNumber(existing.tuitionAmount) !== p.annualTuition) {
         await db
           .update(universityPrograms)
           .set({
@@ -278,8 +306,9 @@ export async function upsertProgram(
             language: p.language ?? existing.language,
           })
           .where(eq(universityPrograms.id, existing.id));
+        updated.push("annual_tuition");
       }
-      return { programId: existing.id, inserted: false };
+      return { programId: existing.id, inserted: false, updated, unchanged: updated.length === 0 };
     }
     const [row] = await db
       .insert(universityPrograms)
@@ -303,10 +332,10 @@ export async function upsertProgram(
         lastVerifiedAt: new Date(),
       })
       .returning();
-    return { programId: row.id, inserted: true };
+    return { programId: row.id, inserted: true, updated: [], unchanged: false };
   } catch (err) {
     console.error("[research-agent] upsertProgram failed:", err);
-    return { programId: null, inserted: false };
+    return { programId: null, inserted: false, updated: [], unchanged: false };
   }
 }
 
