@@ -150,15 +150,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       });
     }
 
-    // ---------- University-level requirements (merged from all programs) ----------
-    const uniReqs: Record<string, { minimumValue: number | null; valueText: string | null }> = {};
+    // ---------- University-level requirements (generic aggregation) ----------
+    // Collects ALL distinct values per requirement type across programs.
+    // If programs disagree (e.g. IELTS 6.5 vs 7.0), we expose the full list
+    // and the UI shows "6.5–7.0" instead of guessing a single number.
+    const uniReqs: Record<string, { values: (number | null)[]; texts: (string | null)[] }> = {};
     const flagAgg = { portfolio: false, interview: false, recommendation: false, personalStatement: false };
     for (const p of programsWithReqs) {
       for (const r of p.requirements) {
         const key = r.requirementType;
-        if (!uniReqs[key]) uniReqs[key] = { minimumValue: r.minimumValue, valueText: r.valueText };
-        else if (uniReqs[key].minimumValue == null && r.minimumValue != null) {
-          uniReqs[key] = { minimumValue: r.minimumValue, valueText: r.valueText };
+        if (!uniReqs[key]) uniReqs[key] = { values: [], texts: [] };
+        if (r.minimumValue != null && !uniReqs[key].values.includes(r.minimumValue)) {
+          uniReqs[key].values.push(r.minimumValue);
+        }
+        if (r.valueText && !uniReqs[key].texts.includes(r.valueText)) {
+          uniReqs[key].texts.push(r.valueText);
         }
       }
       flagAgg.portfolio = flagAgg.portfolio || p.portfolioRequired;
@@ -167,25 +173,41 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       flagAgg.personalStatement = flagAgg.personalStatement || p.personalStatementRequired;
     }
 
+    // Helper: single value, range, or null.
+    const summarize = (key: string, uniFallback: number | null) => {
+      const vals = [...(uniReqs[key]?.values ?? [])];
+      if (uniFallback != null && !vals.includes(uniFallback)) vals.push(uniFallback);
+      if (vals.length === 0) return null;
+      const sorted = [...vals].filter((v): v is number => v != null).sort((a, b) => a - b);
+      return {
+        values: sorted,
+        min: sorted[0],
+        max: sorted[sorted.length - 1],
+        range: sorted.length > 1 ? `${sorted[0]}–${sorted[sorted.length - 1]}` : String(sorted[0]),
+        single: sorted.length === 1 ? sorted[0] : null,
+      };
+    };
+
     const universityRequirements = {
-      ielts: uniReqs.ielts?.minimumValue ?? uni.minIelts ?? null,
-      toefl: uniReqs.toefl?.minimumValue ?? null,
-      duolingo: uniReqs.duolingo?.minimumValue ?? null,
-      gpa: uniReqs.gpa?.minimumValue ?? uni.minGpa ?? null,
-      sat: uniReqs.sat?.minimumValue ?? uni.minSat ?? null,
-      act: uniReqs.act?.minimumValue ?? null,
-      pte: uniReqs.pte?.minimumValue ?? null,
-      cambridgeEnglish: uniReqs.cambridgeenglish?.minimumValue ?? null,
-      satRequired: uniReqs.sat != null || uni.minSat != null,
-      actRequired: uniReqs.act != null,
-      satMinimumPublished: uniReqs.sat?.minimumValue != null || uni.minSat != null,
-      actMinimumPublished: uniReqs.act?.minimumValue != null,
+      ielts: summarize("ielts", uni.minIelts),
+      toefl: summarize("toefl", null),
+      duolingo: summarize("duolingo", null),
+      gpa: summarize("gpa", uni.minGpa),
+      sat: summarize("sat", uni.minSat),
+      act: summarize("act", null),
+      pte: summarize("pte", null),
+      cambridgeEnglish: summarize("cambridgeenglish", null),
+      // Requirement row exists (even without a published minimum):
+      satRequired: (uniReqs.sat?.values.length ?? 0) > 0 || uni.minSat != null,
+      actRequired: (uniReqs.act?.values.length ?? 0) > 0,
+      satMinimumPublished: (uniReqs.sat?.values.length ?? 0) > 0 || uni.minSat != null,
+      actMinimumPublished: (uniReqs.act?.values.length ?? 0) > 0,
       portfolioRequired: flagAgg.portfolio,
       interviewRequired: flagAgg.interview,
       recommendationRequired: flagAgg.recommendation,
       personalStatementRequired: flagAgg.personalStatement,
-      other: uniReqs.other?.valueText ?? null,
-      subject: uniReqs.subject?.valueText ?? null,
+      other: uniReqs.other?.texts ?? [],
+      subject: uniReqs.subject?.texts ?? [],
     };
 
     // ---------- Application cycles (no cycle_year in DB — derive from academic_year) ----------
@@ -278,7 +300,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       university: uni,
       universityRequirements,
       programs: programsWithReqs,
-      cycles,
+      applicationCycles: cycles,
       sources: uniSources,
       scholarships: uniScholarships,
       campuses: [],

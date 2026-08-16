@@ -141,14 +141,18 @@ function fmtValue(v: string | number | null | undefined, suffix = ""): string {
   return `${v}${suffix}`;
 }
 
-/** Read a requirement value from the universityRequirements payload. */
+/** Read a requirement value from the universityRequirements payload.
+ *  Values are either { single, range, values } summaries or null. */
 function req(
-  ur: { [key: string]: number | string | boolean | null } | null,
+  ur: Record<string, any> | null,
   key: string,
   fmt: (v: number) => string
 ): string {
   const v = ur?.[key];
-  if (typeof v === "number" && v !== null) return fmt(v);
+  if (!v) return "Not specified";
+  if (typeof v.single === "number") return fmt(v.single);
+  if (typeof v.range === "string") return `${fmt(Number(v.values?.[0] ?? v.min))}–${fmt(Number(v.values?.[v.values.length - 1] ?? v.max))}`;
+  if (Array.isArray(v) && v.length > 0) return fmt(Number(v[0]));
   return "Not specified";
 }
 
@@ -188,7 +192,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         if (!cancelled) {
           setUni(data.university);
           setPrograms(data.programs || []);
-          setCycles(data.cycles || []);
+          setCycles(data.applicationCycles || data.cycles || []);
           setUniversityRequirements(data.universityRequirements || null);
           setScholarships(data.scholarships || []);
           setSources(data.sources || []);
@@ -450,7 +454,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
             value={
               universityRequirements?.satRequired
                 ? universityRequirements?.satMinimumPublished
-                  ? String(universityRequirements.sat)
+                  ? req(universityRequirements, "sat", (v) => `${v}`)
                   : "Required — no minimum published"
                 : "Not specified"
             }
@@ -460,18 +464,18 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
             value={
               universityRequirements?.actRequired
                 ? universityRequirements?.actMinimumPublished
-                  ? String(universityRequirements.act)
+                  ? req(universityRequirements, "act", (v) => `${v}`)
                   : "Required — no minimum published"
                 : "Not specified"
             }
           />
           <Field label="PTE Academic" value={req(universityRequirements, "pte", (v) => `${v}`)} />
           <Field label="Cambridge English" value={req(universityRequirements, "cambridgeEnglish", (v) => `${v}`)} />
-          {universityRequirements?.other && (
-            <Field label="Other requirements" value={String(universityRequirements.other)} />
+          {Array.isArray(universityRequirements?.other) && universityRequirements.other.length > 0 && (
+            <Field label="Other requirements" value={universityRequirements.other.join("; ")} />
           )}
-          {universityRequirements?.subject && (
-            <Field label="Subject requirements" value={String(universityRequirements.subject)} />
+          {Array.isArray(universityRequirements?.subject) && universityRequirements.subject.length > 0 && (
+            <Field label="Subject requirements" value={universityRequirements.subject.join("; ")} />
           )}
         </div>
         <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
