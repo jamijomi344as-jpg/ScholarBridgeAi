@@ -415,13 +415,14 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
                       <div key={i} className="text-[10px]">
                         <p className={`truncate ${c.category === "other" ? "text-slate-400" : "text-emerald-700 font-bold"}`}>
                           [{c.category}] conf={(Number(c.confidence) * 100).toFixed(0)}% {c.url}
+                          <span className="text-slate-400 font-normal">
+                            {" "}· det: {c.detCategory} {(Number(c.detConfidence ?? 0) * 100).toFixed(0)}%
+                            {c.aiCategory ? ` · ai: ${c.aiCategory} ${(Number(c.aiConfidence ?? 0) * 100).toFixed(0)}%` : ""}
+                            {c.aiUsed ? " · AI" : ""}
+                            {c.fallbackUsed ? " · fallback" : ""}
+                          </span>
                         </p>
-                        {(c.signals?.length > 0 || c.negatives?.length > 0) && (
-                          <p className="text-slate-400 truncate">
-                            {c.signals?.length ? `signals: ${c.signals.join(", ")}` : ""}
-                            {c.negatives?.length ? ` | negatives: ${c.negatives.join(", ")}` : ""}
-                          </p>
-                        )}
+                        {c.reason && <p className="text-slate-400 truncate">{c.reason}</p>}
                       </div>
                     ))}
                   </div>

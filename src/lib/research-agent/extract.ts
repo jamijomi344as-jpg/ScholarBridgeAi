@@ -224,6 +224,19 @@ const hits = (text: string, re: RegExp): number => {
   return m ? m.length : 0;
 };
 
+/** Main-content evidence per category — exported for the AI safety gate. */
+export function hasContentEvidenceFor(category: string, mainText: string): boolean {
+  const pair = CONTENT_EVIDENCE.find(([c]) => c === category);
+  return pair ? pair[1].test(mainText) : true;
+}
+
+/** Actual calendar date in main content ("15 October 2026"). */
+const HAS_REAL_DATE =
+  /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\b/i;
+
+/** "deadline ... 2027" / "deadlines for 2027 entry" — clear entry-year deadline wording. */
+const HAS_ENTRY_YEAR_DEADLINE = /\bdeadlines?\b[^.\n]{0,70}\b(?:20\d{2}|entry)\b|\b20\d{2}\s+entry\b[^.\n]{0,40}\bdeadlines?\b/i;
+
 export function classifyResearchPage(
   url: string,
   structure: PageStructure,
@@ -242,10 +255,11 @@ export function classifyResearchPage(
         signals: [],
         negatives: ["site-meta/legal URL pattern"],
         reason: "site-meta/legal/generic navigation page — discovery only",
+        scores: {},
       };
     }
   } catch {
-    return { category: "other", confidence: 0.05, signals: [], negatives: ["invalid URL"], reason: "invalid URL" };
+    return { category: "other", confidence: 0.05, signals: [], negatives: ["invalid URL"], reason: "invalid URL", scores: {} };
   }
 
   const titleText = `${structure.title}\n${structure.h1.join("\n")}`;
@@ -325,9 +339,17 @@ export function classifyResearchPage(
     (/\b(annual tuition|overseas tuition|home tuition|fees for 20\d\d|per year tuition)\b/i.test(mainText)) ||
     (/\btuition fees?\b/i.test(mainText) && /(£|\$|€|usd|gbp| per (year|semester|term|month)|annual|yearly)/i.test(mainText));
   const gateLiving = CONTENT_EVIDENCE[3][1].test(mainText);
-  const gateDeadline = CONTENT_EVIDENCE[4][1].test(mainText);
+  // Deadline requires ACTUAL dates or clear entry-year deadline wording —
+  // the bare word "deadline" is never enough (user rule 5).
+  const gateDeadline =
+    CONTENT_EVIDENCE[4][1].test(mainText) &&
+    (HAS_REAL_DATE.test(mainText) || HAS_ENTRY_YEAR_DEADLINE.test(mainText));
   const gateAdmissions = CONTENT_EVIDENCE[5][1].test(mainText);
-  const gateInternational = CONTENT_EVIDENCE[6][1].test(mainText);
+  // International requires main content ABOUT international students:
+  // visa/immigration wording, or the topic mentioned repeatedly (a single
+  // "fees for international students" mention is not an international page).
+  const intlHits = (mainText.match(/\binternational (students?|applicants?|admissions?)\b|\boverseas\b/gi) || []).length;
+  const gateInternational = /visas?|immigration|english language requirements?/i.test(mainText) || intlHits >= 2;
   const gateRequirements = CONTENT_EVIDENCE[7][1].test(mainText);
 
   const gates: Record<string, boolean> = {
@@ -341,13 +363,13 @@ export function classifyResearchPage(
     requirements: gateRequirements,
   };
 
-  // Pick best category among gate-passing ones (score >= 30 required).
+  // Pick best category among gate-passing ones.
   let bestCat: string | null = null;
   let bestScore = 0;
   for (const cat of cats) {
     if (!gates[cat]) continue;
     const s = scores[cat] ?? 0;
-    if (s >= 30 && s > bestScore) {
+    if (s > bestScore) {
       bestCat = cat;
       bestScore = s;
     }
@@ -360,13 +382,28 @@ export function classifyResearchPage(
       signals: [],
       negatives: [...negatives, "no strong multi-signal match — gates not satisfied"],
       reason: "discovery only — insufficient multi-signal evidence for any research category",
+      scores,
     };
   }
 
   const confidence = Math.min(0.99, Math.max(0.3, bestScore / 100));
+
+  // RULE 1 (user): NEVER accept a category with confidence < 0.75 —
+  // weak deterministic results are discovery_only, never forced.
+  if (bestScore < 75) {
+    return {
+      category: "other",
+      confidence,
+      signals: (reasons[bestCat] || "").split(", ").filter(Boolean),
+      negatives: [...negatives, `confidence ${confidence.toFixed(2)} below 0.75 threshold`],
+      reason: `weak deterministic candidate '${bestCat}' (conf ${confidence.toFixed(2)}) — discovery_only per 0.75 threshold`,
+      scores,
+    };
+  }
+
   return {
     category: bestCat,
-    confidence: thinContent ? Math.min(confidence, 0.55) : confidence,
+    confidence: thinContent ? Math.min(confidence, 0.8) : confidence,
     signals: (reasons[bestCat] || "").split(", ").filter(Boolean),
     negatives,
     reason: `classified ${CATEGORY_LABEL[bestCat]} (score ${bestScore})`,
@@ -511,6 +548,7 @@ export function programNameFromSlug(slug: string): string {
  * "Computing BEng"). Returns null when no non-generic name is present.
  */
 export function programNameFromTitle(title: string): string | null {
+  if (/^https?:\/\//i.test(title || "")) return null; // a URL is never a program name
   const parts = (title || "")
     .split(/[|–—-]/)
     .map((s) => s.trim())

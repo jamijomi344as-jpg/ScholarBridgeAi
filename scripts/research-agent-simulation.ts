@@ -32,6 +32,8 @@ import {
 } from "../src/lib/research-agent/extract";
 import { rejectSourceReason, isResearchSourceUrl } from "../src/lib/research-agent/urlFilter";
 import { decideUniversityFields, findExistingProgram } from "../src/lib/research-agent/persist";
+import { decideFinalClassification } from "../src/lib/research-agent/ai/decide";
+import { hasContentEvidenceFor } from "../src/lib/research-agent/extract";
 import { toNumber, normalizeCurrency, normalizeNameKey, normalizeUrl } from "../src/lib/research-agent/normalize";
 
 let failures = 0;
@@ -122,15 +124,16 @@ const HOME_MAIN = `<h1>Imperial College London</h1>
 <p>Welcome to Imperial College London, a world-leading university for science, engineering, medicine and business.</p>
 <a href="/study/">Study at Imperial</a>
 <a href="/study/courses/">Find a course</a>
-<a href="/faculties-and-departments/">Faculties and departments</a>`;
+<a href="/faculties-and-departments/">Faculties and departments</a>
+<a href="/study/why-imperial/">Why study at Imperial</a>`;
 
-const STUDY_HUB_MAIN = `<h1>Study</h1><p>Explore undergraduate and postgraduate study at Imperial.</p>
-<a href="/study/courses/">Courses</a><a href="/study/apply/">How to apply</a><a href="/study/fees-and-funding/">Tuition fees</a>`;
+const STUDY_HUB_MAIN = `<h1>Study</h1><p>Explore undergraduate and postgraduate study at Imperial. How to apply: applications are made through UCAS. International students and scholarships are covered on their own pages.</p>
+<a href="/study/courses/">Courses</a><a href="/study/apply/">Apply</a><a href="/study/fees-and-funding/">Tuition fees</a>`;
 
-const COURSES_HUB_MAIN = `<h1>Course search</h1><p>Use the course finder to browse all programmes.</p>
-<a href="/study/courses/undergraduate/computing-beng/">Computing BEng</a>
-<a href="/study/courses/undergraduate/mechanical-engineering-beng/">Mechanical Engineering BEng</a>
-<a href="/study/courses/">All courses</a>`;
+// JS-driven course search — NO static program links (program pages are only
+// reachable via the sitemap — the exact real-world Imperial problem).
+const COURSES_HUB_MAIN = `<h1>Course search</h1><p>Use the course finder to browse all programmes. Loading courses...</p>
+<p>Use the search box above to find a course by name, keyword or UCAS code.</p>`;
 
 const TUITION_MAIN = `<h1>Undergraduate tuition fees | Imperial College London</h1>
 <p>Tuition fees for 2026-27 entry are published on this page. The annual tuition fee for undergraduate programmes is £45,500 per year. Overseas tuition fees are the same for all undergraduate programmes.</p>
@@ -153,6 +156,9 @@ const APPLY_MAIN = `<h1>How to apply for 2027 entry | Imperial College London</h
 const SCHOLARSHIP_MAIN = `<h1>Imperial Inspires Scholarship 2027 | Imperial College London</h1>
 <p>The Imperial Inspires Scholarship supports undergraduate students with financial need. Awards are available up to £5,000 per year. Eligibility is assessed on financial need; the number of awards is limited. How to apply: your UCAS application is considered automatically.</p>`;
 
+const MECH_MAIN = `<h1>Mechanical Engineering BEng | Study | Imperial College London</h1>
+<p>Our Mechanical Engineering BEng degree covers mechanics, materials, thermodynamics and design. This three-year undergraduate programme leads to a BEng degree. Course overview: core modules include statics, dynamics and manufacturing. Entry requirements: A-levels A*AA including Mathematics and Physics.</p>`;
+
 const COMPUTING_MAIN = `<h1>Computing BEng | Study | Imperial College London</h1>
 <p>Our Computing BEng degree combines computer science, mathematics and engineering. This three-year undergraduate programme leads to a BEng degree.</p>
 <p>Course overview: core modules include programming, algorithms and mathematics. Tuition fees for this programme are £45,500 per year. Entry requirements: A-levels AAA including Mathematics, IELTS 7.0. UCAS code: G400.</p>`;
@@ -163,13 +169,29 @@ const INTERNATIONAL_MAIN = `<h1>International students | Imperial College London
 const ACCESSIBILITY_MAIN = `<h1>Accessibility statement | Imperial College London</h1>
 <p>Accessibility statement for the Imperial College London website. Skip to main content. We aim to make every page accessible; contact us about accessibility issues. This page was last updated in January 2026.</p>`;
 
+const WEAK_INTL_MAIN = `<h1>Why study at Imperial</h1>
+<p>Imperial welcomes international students. Apply now.</p>`;
+
 const RESEARCH_MAIN = `<h1>Research and innovation | Imperial College London</h1>
 <p>Imperial's research centres and innovation programmes across faculties and departments.</p>`;
 
 const FACULTIES_MAIN = `<h1>Faculties and departments | Imperial College London</h1>
 <p>Our faculties and departments: engineering, natural sciences, medicine, business.</p>`;
 
+const SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>https://imperial.ac.uk/study/courses/undergraduate/computing-beng/</loc></url>
+<url><loc>https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/</loc></url>
+<url><loc>https://imperial.ac.uk/study/fees-and-funding/scholarships/</loc></url>
+<url><loc>https://imperial.ac.uk/study/entry-requirements/</loc></url>
+<url><loc>https://imperial.ac.uk/study/fees-and-funding/</loc></url>
+<url><loc>https://imperial.ac.uk/about-the-site/accessibility/</loc></url>
+</urlset>`;
+
 const FIXTURE_PAGES: Record<string, string> = {
+  "https://imperial.ac.uk/sitemap.xml": SITEMAP,
+  "https://imperial.ac.uk/sitemap_index.xml": SITEMAP,
+  "https://imperial.ac.uk/sitemap/": SITEMAP,
   "https://imperial.ac.uk/": wrap("Imperial College London", HOME_MAIN),
   "https://www.imperial.ac.uk/": wrap("Imperial College London", HOME_MAIN),
   "https://imperial.ac.uk/study/": wrap("Study | Imperial College London", STUDY_HUB_MAIN),
@@ -184,7 +206,9 @@ const FIXTURE_PAGES: Record<string, string> = {
   "https://imperial.ac.uk/about-the-site/accessibility/": wrap("Accessibility statement | Imperial College London", ACCESSIBILITY_MAIN),
   "https://imperial.ac.uk/research-and-innovation/": wrap("Research and innovation | Imperial College London", RESEARCH_MAIN),
   "https://imperial.ac.uk/faculties-and-departments/": wrap("Faculties and departments | Imperial College London", FACULTIES_MAIN),
+  "https://imperial.ac.uk/study/why-imperial/": wrap("Why study at Imperial | Imperial College London", WEAK_INTL_MAIN),
   "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/": wrap("Computing BEng | Study | Imperial College London", COMPUTING_MAIN),
+  "https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/": wrap("Mechanical Engineering BEng | Study | Imperial College London", MECH_MAIN),
 };
 
 const fetchPage = async (url: string): Promise<string | null> =>
@@ -231,6 +255,40 @@ async function main() {
       discovered.push({ url: link, title: link, type: classifyLink(link, "") });
     }
   }
+  // Sitemap discovery (mirror production): JS-driven hubs -> program pages via sitemap.
+  const SITEMAP_CANDIDATES = [
+    `https://${domain}/sitemap.xml`,
+    `https://${domain}/sitemap_index.xml`,
+    `https://${domain}/sitemap/`,
+  ];
+  let sitemapAdded = 0;
+  for (const smUrl of SITEMAP_CANDIDATES) {
+    if (seen.has(smUrl) || sitemapAdded >= 40) break;
+    seen.add(smUrl);
+    const sm = await fetchPage(smUrl);
+    if (!sm) continue;
+    const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim()).slice(0, 120);
+    for (const loc of locs) {
+      if (sitemapAdded >= 40) break;
+      if (seen.has(loc)) continue;
+      let path = "";
+      try {
+        if (new URL(loc).hostname !== domain && new URL(loc).hostname !== `www.${domain}`) continue;
+        path = new URL(loc).pathname.replace(/\/$/, ""); // strip trailing slash for slug matching
+      } catch { continue; }
+      const interesting =
+        /(^|\/)(courses?|programs?|programmes?)\/.+[a-z0-9]+(-[a-z0-9]+)+[^/]*$/.test(path) ||
+        /(^|\/)(scholarship|scholarships|bursaries?)\//.test(path) ||
+        /(^|\/)(entry-requirements|requirements|tuition|fees-and-funding)\//.test(path);
+      if (!interesting) continue;
+      const reason = rejectSourceReason(loc);
+      if (reason) continue;
+      seen.add(loc);
+      discovered.push({ url: loc, title: loc, type: classifyLink(loc, "") });
+      sitemapAdded++;
+    }
+  }
+
   const HUB_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?|study)\/?$/;
   const isHub = (url: string) => {
     try { return HUB_PATH_RE.test(new URL(url).pathname) && url !== `https://${domain}/`; } catch { return false; }
@@ -274,15 +332,19 @@ async function main() {
 
   // ---- STEP E: multi-signal classification ----
   console.log("\n=== CLASSIFICATION (URL + title + H1/H2 + main content) ===");
-  const classifications: { url: string; category: string; confidence: number; signals: string[]; negatives: string[] }[] = [];
+  const classifications: { url: string; category: string; confidence: number; signals: string[]; negatives: string[]; reason?: string }[] = [];
   for (const p of pages) {
     if (p.type === "homepage") continue;
     const cls = classifyResearchPage(p.url, p.structure, p.title);
-    p.type = cls.category;
-    classifications.push({ url: p.url, category: cls.category, confidence: cls.confidence, signals: cls.signals, negatives: cls.negatives });
-    console.log(`  [${cls.category}] conf=${cls.confidence.toFixed(2)} ${p.url}`);
-    if (cls.signals.length) console.log(`      signals: ${cls.signals.join(", ")}`);
-    if (cls.negatives.length) console.log(`      negatives: ${cls.negatives.join(", ")}`);
+    const final = decideFinalClassification(
+      { category: cls.category, confidence: cls.confidence },
+      null, // no AI key in sandbox — threshold policy applies
+      (cat) => hasContentEvidenceFor(cat, p.structure.mainTextNoLinks || p.text)
+    );
+    p.type = final.category;
+    classifications.push({ url: p.url, category: final.category, confidence: final.confidence, signals: cls.signals, negatives: cls.negatives, reason: final.reason });
+    console.log(`  [${final.category}] conf=${final.confidence.toFixed(2)} ${p.url} (det: ${cls.category} ${cls.confidence.toFixed(2)})`);
+    if (final.reason) console.log(`      reason: ${final.reason}`);
   }
 
   const catOf = (u: string) => classifications.find((c) => c.url === u)?.category;
@@ -303,7 +365,7 @@ async function main() {
     ["https://imperial.ac.uk/study/fees-and-funding/scholarships/"]);
   check("NO generic page classified program",
     classifications.filter((c) => c.category === "program").map((c) => c.url),
-    ["https://imperial.ac.uk/study/courses/undergraduate/computing-beng/"]);
+    ["https://imperial.ac.uk/study/courses/undergraduate/computing-beng/", "https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/"]);
 
   // ---- Extraction ----
   console.log("\n=== EXTRACTION ===");
@@ -398,7 +460,7 @@ async function main() {
       console.log(`  would INSERT: ${v.name} ← ${p.url}`);
     }
   }
-  check("Inserted programs = 0", insertedPrograms, []);
+  check("Inserted = only NEW program (Mechanical Engineering BEng)", insertedPrograms, ["Mechanical Engineering BEng"]);
   check("Skipped existing program = 1 (Computing BEng)", skippedPrograms, ["Computing BEng"]);
 
   // ---- Source persistence (issue 9) ----
@@ -444,6 +506,14 @@ async function main() {
   check("program page persisted", newSources.some((s) => s.url.includes("computing-beng")), true);
   check("ZERO assets persisted", newSources.some((s) => !isResearchSourceUrl(s.url)), false);
   check("woff2 rejected", rejectedSources.some((r) => r.url.includes("woff2")), true);
+
+  // ---- New rules (threshold + sitemap + JS-driven hub) ----
+  check("weak international (1 mention) -> other", catOf("https://imperial.ac.uk/study/why-imperial/"), "other");
+  check("study hub with 'How to apply' text still -> other (0.75 threshold)", catOf("https://imperial.ac.uk/study/"), "other");
+  check("program page discovered via SITEMAP", catOf("https://imperial.ac.uk/study/courses/undergraduate/computing-beng/"), "program");
+  check("scholarship page discovered via SITEMAP", catOf("https://imperial.ac.uk/study/fees-and-funding/scholarships/"), "scholarship");
+  check("requirements page discovered via SITEMAP", catOf("https://imperial.ac.uk/study/entry-requirements/"), "requirements");
+  check("mechanical-engineering from sitemap is a program", catOf("https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/"), "program");
 
   console.log(`\n${failures === 0 ? "ALL SIMULATION TESTS PASSED" : `${failures} TEST(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);

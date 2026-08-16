@@ -4,7 +4,7 @@
 import { AGENT_CONFIG } from "./config";
 import { fetchPageText, fetchHomepage, extractLinks, extractPageStructure, sleep } from "./fetch";
 import type { PageStructure } from "./fetch";
-import { resolveOfficialDomain, pickOfficialDomainFromSearch } from "./domain";
+import { resolveOfficialDomain, pickOfficialDomainFromSearch, isSameDomain } from "./domain";
 import {
   classifyLink,
   classifyResearchPage,
@@ -39,6 +39,8 @@ import { normalizeNameKey, normalizeUrl, toNumber, normalizeCurrency, toIsoDate 
 import { isResearchSourceUrl, rejectSourceReason } from "./urlFilter";
 import { createAIProvider } from "./ai/openrouter";
 import { validateAIEvidence, aiEvidenceToSourceEvidence } from "./ai/validate";
+import { decideFinalClassification } from "./ai/decide";
+import { hasContentEvidenceFor } from "./extract";
 import type { AIExtractionResult, AIProvider } from "./ai/types";
 import type { RunRequest, RunStatus, AuditReport, SourceEvidence, FieldDecision } from "./types";
 
@@ -86,6 +88,9 @@ export async function runUniversity(
     classifications: [] as {
       url: string; title: string; h1: string; category: string;
       confidence: number; signals: string[]; negatives: string[]; reason: string;
+      detCategory: string; detConfidence: number;
+      aiCategory: string | null; aiConfidence: number | null;
+      aiUsed: boolean; fallbackUsed: boolean;
     }[],
     ai: aiSession,
   };
@@ -205,6 +210,52 @@ export async function runUniversity(
       }
     }
 
+    // Sitemap discovery (generic, spec §3C): on JS-driven sites program and
+    // scholarship pages are often reachable ONLY via the sitemap. Standard
+    // sitemap locations are probed; only interesting page kinds are added.
+    {
+      const sitemapCandidates = [
+        `https://${domain}/sitemap.xml`,
+        `https://${domain}/sitemap_index.xml`,
+        `https://${domain}/sitemap/`,
+        `https://${domain}/sitemap-index.xml`,
+      ];
+      let sitemapAdded = 0;
+      for (const smUrl of sitemapCandidates) {
+        if (seen.has(smUrl) || sitemapAdded >= AGENT_CONFIG.maxSitemapUrls) break;
+        seen.add(smUrl);
+        progress(`Probing sitemap ${smUrl} for program/scholarship pages...`);
+        const sm = await fetchPage(smUrl);
+        if (!sm) continue;
+        const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/gi)]
+          .map((m) => m[1].trim())
+          .slice(0, AGENT_CONFIG.maxSitemapUrls * 3);
+        for (const loc of locs) {
+          if (sitemapAdded >= AGENT_CONFIG.maxSitemapUrls) break;
+          if (seen.has(loc)) continue;
+          let path = "";
+          try {
+            if (!isSameDomain(loc, domain)) continue;
+            path = new URL(loc).pathname.replace(/\/$/, ""); // strip trailing slash for slug matching
+          } catch {
+            continue;
+          }
+          // Only program / scholarship / requirements / tuition-like URLs.
+          const interesting =
+            /(^|\/)(courses?|programs?|programmes?)\/.+[a-z0-9]+(-[a-z0-9]+)+[^/]*$/.test(path) ||
+            /(^|\/)(scholarship|scholarships|bursaries?)\//.test(path) ||
+            /(^|\/)(entry-requirements|requirements|tuition|fees-and-funding)\//.test(path);
+          if (!interesting) continue;
+          const reason = rejectSourceReason(loc);
+          if (reason) continue;
+          seen.add(loc);
+          discovered.push({ url: loc, title: loc, type: classifyLink(loc, "") });
+          sitemapAdded++;
+        }
+        await sleep(AGENT_CONFIG.fetchDelayMs);
+      }
+    }
+
     // Course hubs are crawled ONE level to discover real program pages
     // (hub pages themselves are discovery-only, never programs — spec §7).
     // Queue-based: hubs discovered while crawling hubs are crawled too
@@ -280,18 +331,13 @@ export async function runUniversity(
     for (const p of pages) {
       // The root URL is homepage by definition — never reclassified by nav text.
       if (p.type === "homepage") continue;
-      let cls = classifyResearchPage(p.url, p.structure, p.title);
-      let aiUsed = false;
+      const cls = classifyResearchPage(p.url, p.structure, p.title);
+      const det = { category: cls.category, confidence: cls.confidence };
 
-      // AI is consulted ONLY when the deterministic classifier is ambiguous
-      // (no strong category, or a near-tie) — spec §4, §5, §17.
-      const ambiguous =
-        cls.category === "other" ||
-        (cls.scores != null &&
-          (() => {
-            const sorted = Object.entries(cls.scores!).sort((a, b) => b[1] - a[1]);
-            return sorted.length >= 2 && sorted[0][1] - sorted[1][1] <= 15 && sorted[0][1] < 80;
-          })());
+      // AI is consulted ONLY when the deterministic classifier is ambiguous:
+      // no category, or confidence below the 0.75 threshold (spec §4, §6).
+      const ambiguous = cls.category === "other" || cls.confidence < 0.75;
+      let aiRes: { pageType: string; confidence: number } | null = null;
       if (ambiguous && aiProvider.available && aiSession.calls < AGENT_CONFIG.aiMaxCallsPerRun) {
         const aiCls = await aiProvider.classifyPage({
           url: p.url,
@@ -302,44 +348,47 @@ export async function runUniversity(
         });
         aiSession.calls++;
         const VALID_AI_TYPES = /^(homepage|admissions|international|program|tuition|living_costs|scholarship|deadline|requirements|discovery_only)$/;
-        if (aiCls && VALID_AI_TYPES.test(aiCls.pageType) && aiCls.confidence >= 0.6) {
-          aiUsed = true;
-          const cat = aiCls.pageType === "discovery_only" ? "other" : aiCls.pageType;
-          cls = {
-            category: cat,
-            confidence: aiCls.confidence,
-            signals: [...cls.signals, `ai:${(aiCls.evidence || []).slice(0, 4).join(";")}`],
-            negatives: cls.negatives,
-            reason: `AI(${aiProvider.model}): ${aiCls.reason || "ai classification"}`,
-            scores: cls.scores,
-          };
-          progress(`AI classification: [${cat}] conf ${aiCls.confidence.toFixed(2)} — ${p.url}`);
+        if (aiCls && VALID_AI_TYPES.test(aiCls.pageType)) {
+          aiRes = { pageType: aiCls.pageType, confidence: aiCls.confidence };
         } else {
           aiSession.fallbacks++;
-          progress(`AI classification unavailable/unclear for ${p.url} — keeping deterministic result`);
         }
       }
 
-      const oldType = p.type;
-      p.type = cls.category;
-      const disc = discovered.find((d) => d.url === p.url);
-      if (disc && disc.type === oldType) disc.type = cls.category;
+      // AI priority policy (user rule 6/9): high-confidence AI wins when the
+      // safety gate passes; weak deterministic is never forced; AI < 0.75
+      // or unavailable → discovery_only when deterministic is weak.
+      const mainForGate = p.structure.mainTextNoLinks || p.text;
+      const final = decideFinalClassification(det, aiRes, (cat) => hasContentEvidenceFor(cat, mainForGate));
+      const aiUsed = aiRes != null;
+      if (aiRes && final.fallbackUsed) aiSession.fallbacks++;
       if (aiUsed) aiSession.classifiedPages.push(p.url);
+
+      const oldType = p.type;
+      p.type = final.category;
+      const disc = discovered.find((d) => d.url === p.url);
+      if (disc && disc.type === oldType) disc.type = final.category;
       debug.classifications.push({
         url: p.url,
         title: p.structure.title || p.title || "",
         h1: p.structure.h1[0] || "",
-        category: cls.category,
-        confidence: cls.confidence,
+        category: final.category,
+        confidence: final.confidence,
         signals: cls.signals,
         negatives: cls.negatives,
-        reason: `${cls.reason}${aiUsed ? " (AI)" : ""}`,
+        reason: final.reason,
+        detCategory: det.category,
+        detConfidence: det.confidence,
+        aiCategory: aiRes ? (aiRes.pageType === "discovery_only" ? "other" : aiRes.pageType) : null,
+        aiConfidence: aiRes?.confidence ?? null,
+        aiUsed,
+        fallbackUsed: final.fallbackUsed,
       });
       progress(
-        `Classified [${cls.category}] (conf ${cls.confidence.toFixed(2)}) ${p.url} — ${cls.reason}` +
-        (aiUsed ? " [AI]" : "") +
-        (cls.signals.length ? ` | signals: ${cls.signals.join(", ")}` : "") +
-        (cls.negatives.length ? ` | negatives: ${cls.negatives.join(", ")}` : "")
+        `Classified [${final.category}] (conf ${final.confidence.toFixed(2)}) ${p.url} — ${final.reason}` +
+        ` | det: ${det.category} ${det.confidence.toFixed(2)}` +
+        (aiRes ? ` | ai: ${aiRes.pageType} ${aiRes.confidence.toFixed(2)}` : "") +
+        (final.fallbackUsed ? " [fallback]" : "")
       );
     }
 
@@ -372,7 +421,7 @@ export async function runUniversity(
         const acc = extractMoney(p.text, ctx, "accommodation_cost", "year", /accommodation|housing|room/);
         if (acc) evidence.push({ ...acc, field: "accommodation_cost" });
       }
-      if (scopes.includes("requirements") && pageTypeIs(p, ["requirements", "admissions", "international"])) {
+      if (scopes.includes("requirements") && pageTypeIs(p, ["requirements", "admissions", "international", "program"])) {
         const ielts = extractNumberReq(p.text, ctx, "min_ielts", "IELTS");
         if (ielts) evidence.push(ielts);
         if (aiAssist?.ielts != null) evidence.push({ field: "min_ielts", value: aiAssist.ielts, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });

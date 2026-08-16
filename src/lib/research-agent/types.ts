@@ -234,6 +234,14 @@ export interface ClassifyDebug {
   signals: string[];
   negatives: string[];
   reason: string;
+  /** Deterministic classifier result (before AI policy). */
+  detCategory: string;
+  detConfidence: number;
+  /** AI result when consulted (null when not consulted / unavailable). */
+  aiCategory: string | null;
+  aiConfidence: number | null;
+  aiUsed: boolean;
+  fallbackUsed: boolean;
 }
 
 /** Extraction pipeline statistics (debug report, spec §21). */

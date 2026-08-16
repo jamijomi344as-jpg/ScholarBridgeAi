@@ -14,6 +14,7 @@ import {
   createAIProvider,
   parseModelJson,
 } from "../src/lib/research-agent/ai/openrouter";
+import { decideFinalClassification } from "../src/lib/research-agent/ai/decide";
 import { validateAIEvidence, aiEvidenceToSourceEvidence } from "../src/lib/research-agent/ai/validate";
 import { canMarkVerified } from "../src/lib/research-agent/validate";
 
@@ -248,13 +249,49 @@ async function main() {
     check("15. NEVER verified by AI confidence alone", canMarkVerified(ev), false);
   }
 
-  // 16. Range values rejected as scalars (spec §10)
+  // 16. AI priority policy (user rule 6/9) — decideFinalClassification
+  {
+    const safety = (cat: string) => cat === "tuition" || cat === "program"; // mock gate
+    // 16a. Weak deterministic (0.46) + AI unavailable → discovery_only (real bug: fees page)
+    check("16a. det 0.46 international, no AI -> other",
+      decideFinalClassification({ category: "international", confidence: 0.46 }, null, safety).category, "other");
+    // 16b. Weak deterministic + AI says other 0.95 → other (rule 9)
+    check("16b. AI other 0.95 overrides weak det international 0.46",
+      decideFinalClassification({ category: "international", confidence: 0.46 }, { pageType: "other", confidence: 0.95 }, safety).category, "other");
+    // 16c. Weak det + AI tuition 0.9 + safety passes → tuition
+    const c16c = decideFinalClassification({ category: "international", confidence: 0.46 }, { pageType: "tuition", confidence: 0.9 }, safety);
+    check("16c. AI tuition 0.9 accepted (safety ok)", c16c.category, "tuition");
+    check("16c. aiUsed", c16c.aiUsed, true);
+    // 16d. AI tuition 0.9 but safety fails → not trusted
+    check("16d. AI tuition 0.9 safety fail -> other",
+      decideFinalClassification({ category: "international", confidence: 0.46 }, { pageType: "tuition", confidence: 0.9 }, (c) => c === "program").category, "other");
+    // 16e. AI 0.8 (0.75-0.849) + deterministic disagrees → not accepted
+    check("16e. AI 0.8 no agreement -> other",
+      decideFinalClassification({ category: "other", confidence: 0.4 }, { pageType: "scholarship", confidence: 0.8 }, safety).category, "other");
+    // 16f. AI 0.8 + deterministic agrees → accepted
+    const c16f = decideFinalClassification({ category: "tuition", confidence: 0.9 }, { pageType: "tuition", confidence: 0.8 }, safety);
+    check("16f. AI 0.8 agrees with det -> tuition", c16f.category, "tuition");
+    // 16g. AI 0.6 (< 0.75) → never accepted
+    check("16g. AI 0.6 -> other (weak det)", decideFinalClassification({ category: "other", confidence: 0.3 }, { pageType: "program", confidence: 0.6 }, safety).category, "other");
+    // 16h. AI 0.6 + STRONG deterministic → keep deterministic
+    check("16h. AI 0.6 + det program 0.99 -> program",
+      decideFinalClassification({ category: "program", confidence: 0.99 }, { pageType: "scholarship", confidence: 0.6 }, safety).category, "program");
+    // 16i. strong deterministic + AI unavailable → stays (no threshold violation)
+    check("16i. det program 0.99 no AI -> program",
+      decideFinalClassification({ category: "program", confidence: 0.99 }, null, safety).category, "program");
+    // 16j. deterministic 0.74 (just below) → discovery_only
+    check("16j. det 0.74 -> other", decideFinalClassification({ category: "admissions", confidence: 0.74 }, null, safety).category, "other");
+    // 16k. deterministic 0.75 exactly → accepted
+    check("16k. det 0.75 -> kept", decideFinalClassification({ category: "admissions", confidence: 0.75 }, null, safety).category, "admissions");
+  }
+
+  // 17. Range values rejected as scalars (spec §10)
   {
     const v = validateAIEvidence(
       { field: "annual_living_est", value: 15000, rangeMin: 15000, rangeMax: 18000, currency: "GBP", sourceUrl: PAGE.url, sourceTitle: "x", evidenceQuote: "£15,000–£18,000 per year", confidence: 0.9 },
       PAGE.url, "Living costs £15,000–£18,000 per year", "living_costs"
     );
-    check("16. range → rejected as scalar", v.ok, false);
+    check("17. range → rejected as scalar", v.ok, false);
   }
 
   console.log(`\n${failures === 0 ? "ALL AI TESTS PASSED" : `${failures} TEST(S) FAILED`}`);
