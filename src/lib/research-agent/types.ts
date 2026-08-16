@@ -222,10 +222,23 @@ export interface PageFetchNote {
   reason?: string;
 }
 
+/** Per-page classification decision (debug report). */
+export interface ClassifyDebug {
+  url: string;
+  title: string;
+  h1: string;
+  category: string;
+  confidence: number;
+  signals: string[];
+  negatives: string[];
+  reason: string;
+}
+
 /** Extraction pipeline statistics (debug report, spec §21). */
 export interface ExtractionDebug {
   fetchedPages: number;
   classifiedCounts: Record<string, number>;
   extractionCounts: Record<string, number>;
   pageNotes: PageFetchNote[];
+  classifications: ClassifyDebug[];
 }

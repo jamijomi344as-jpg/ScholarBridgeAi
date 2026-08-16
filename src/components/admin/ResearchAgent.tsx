@@ -393,6 +393,23 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
                     Candidates: {Object.entries(report.debug.extractionCounts).map(([f, n]) => `${f} ${n}`).join(" · ")}
                   </p>
                 )}
+                {(report.debug.classifications || []).length > 0 && (
+                  <div className="max-h-40 overflow-y-auto space-y-1 mb-2">
+                    {report.debug.classifications.slice(0, 20).map((c: any, i: number) => (
+                      <div key={i} className="text-[10px]">
+                        <p className={`truncate ${c.category === "other" ? "text-slate-400" : "text-emerald-700 font-bold"}`}>
+                          [{c.category}] conf={(Number(c.confidence) * 100).toFixed(0)}% {c.url}
+                        </p>
+                        {(c.signals?.length > 0 || c.negatives?.length > 0) && (
+                          <p className="text-slate-400 truncate">
+                            {c.signals?.length ? `signals: ${c.signals.join(", ")}` : ""}
+                            {c.negatives?.length ? ` | negatives: ${c.negatives.join(", ")}` : ""}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {(report.debug.pageNotes || []).length > 0 && (
                   <div className="max-h-36 overflow-y-auto space-y-0.5">
                     {report.debug.pageNotes.slice(0, 25).map((n: any, i: number) => (

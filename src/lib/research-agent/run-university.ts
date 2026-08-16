@@ -2,11 +2,12 @@
  * Orchestrator for a single university (spec §3, §18, §20, §21, §23).
  */
 import { AGENT_CONFIG } from "./config";
-import { fetchPageText, fetchHomepage, extractLinks, htmlToText, sleep } from "./fetch";
+import { fetchPageText, fetchHomepage, extractLinks, extractPageStructure, sleep } from "./fetch";
+import type { PageStructure } from "./fetch";
 import { resolveOfficialDomain, pickOfficialDomainFromSearch } from "./domain";
 import {
   classifyLink,
-  classifyPageByContent,
+  classifyResearchPage,
   isMeaningfulSourceTitle,
   firstHeading,
   validateProgramPage,
@@ -65,6 +66,10 @@ export async function runUniversity(
     classifiedCounts: {} as Record<string, number>,
     extractionCounts: {} as Record<string, number>,
     pageNotes: [] as { url: string; category: string; title: string; textLength: number; extracted: number; reason?: string }[],
+    classifications: [] as {
+      url: string; title: string; h1: string; category: string;
+      confidence: number; signals: string[]; negatives: string[]; reason: string;
+    }[],
   };
   let universityName = `#${universityId}`;
   let sourcesReadBack = 0;
@@ -231,8 +236,10 @@ export async function runUniversity(
       return rank(a) - rank(b);
     });
 
-    // STEP D — fetch pages (capped, deduped) (spec §3D, §21)
-    const pages: { url: string; title: string; type: string; text: string }[] = [];
+    // STEP D — fetch pages (capped, deduped) (spec §3D, §21).
+    // Main-content extraction: nav/footer/sidebar is removed before any
+    // classification or field extraction (spec §23, §10).
+    const pages: { url: string; title: string; type: string; text: string; structure: PageStructure }[] = [];
     const fetched = new Set<string>();
     for (const d of discovered.slice(0, maxPages)) {
       if (fetched.has(d.url)) continue;
@@ -242,29 +249,39 @@ export async function runUniversity(
       progress(`Fetching ${d.type} page...`);
       const html = await fetchPage(d.url);
       if (!html) continue;
-      const text = htmlToText(html);
-      if (text.length < 80) continue; // too short / PDF unparsed
-      pages.push({ ...d, text });
+      const structure = extractPageStructure(html);
+      if (structure.fullText.length < 80) continue; // too short / PDF unparsed
+      pages.push({ ...d, text: structure.mainText, structure });
       await sleep(AGENT_CONFIG.fetchDelayMs);
     }
 
-    // STEP E — extract (generic regex + optional AI assist) (spec §3E, §9).
-    // CLASSIFICATION FIRST: fetched pages are re-classified using URL +
-    // title + CONTENT — URL keywords alone are not enough (spec §3D).
-    // Page-type gate + per-field hints: a tuition page only contributes
-    // tuition evidence, a living-costs page only living/accommodation
-    // evidence, etc. — generic, never by university name.
-    progress("Classifying fetched pages by content...");
+    // STEP E — CLASSIFICATION FIRST (multi-signal): URL + title + H1/H2 +
+    // MAIN content + negative signals. URL keywords alone are never enough,
+    // and nav/footer text never weighs like main content (spec §3D, §23).
+    progress("Classifying fetched pages (URL + title + H1/H2 + main content)...");
     for (const p of pages) {
       // The root URL is homepage by definition — never reclassified by nav text.
       if (p.type === "homepage") continue;
-      const contentCat = classifyPageByContent(p.text, p.title);
-      if (contentCat) {
-        const oldType = p.type;
-        p.type = contentCat.category;
-        const disc = discovered.find((d) => d.url === p.url);
-        if (disc && disc.type === oldType) disc.type = contentCat.category;
-      }
+      const cls = classifyResearchPage(p.url, p.structure, p.title);
+      const oldType = p.type;
+      p.type = cls.category;
+      const disc = discovered.find((d) => d.url === p.url);
+      if (disc && disc.type === oldType) disc.type = cls.category;
+      debug.classifications.push({
+        url: p.url,
+        title: p.structure.title || p.title || "",
+        h1: p.structure.h1[0] || "",
+        category: cls.category,
+        confidence: cls.confidence,
+        signals: cls.signals,
+        negatives: cls.negatives,
+        reason: cls.reason,
+      });
+      progress(
+        `Classified [${cls.category}] (conf ${cls.confidence.toFixed(2)}) ${p.url} — ${cls.reason}` +
+        (cls.signals.length ? ` | signals: ${cls.signals.join(", ")}` : "") +
+        (cls.negatives.length ? ` | negatives: ${cls.negatives.join(", ")}` : "")
+      );
     }
 
     progress("Extracting structured data...");

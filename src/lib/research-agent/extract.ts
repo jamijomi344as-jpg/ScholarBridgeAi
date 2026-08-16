@@ -122,47 +122,253 @@ export function extractNumberReq(
  * category with its hit count, or null when the page has no strong signals
  * (generic navigation page).
  */
-const CONTENT_CATEGORY_PATTERNS: [string, RegExp][] = [
-  ["tuition", /\btuition fees?\b|\boverseas tuition\b|\bfees for (20\d\d|20\d\d-\d\d)\b|\bhome fees\b|\binternational fees?\b|\bfee schedule\b|\bper year tuition\b/i],
-  ["living_costs", /\bliving costs?\b|\bcost of living\b|\bmonthly expenses?\b|\bliving expenses?\b|\bbudget for living\b|\bmoney advice\b|\bweekly budget\b|\bmonthly budget\b/i],
-  ["requirements", /\benglish language requirement\b|\bIELTS\b|\bTOEFL\b|\bDuolingo English Test\b|\bPTE Academic\b|\bA-levels?\b|\bInternational Baccalaureate\b|\bentry requirements\b|\bTMUA\b|\bminimum requirements?\b|\badmission requirements\b/i],
-  ["deadline", /\bdeadline\b|\bkey dates\b|\bimportant dates\b|\bapply by\b|\bUCAS deadline\b|\bclosing date\b|\bequal consideration\b|\bapplications close\b|\b20\d\d entry\b/i],
-  ["scholarship", /\bscholarships?\b|\bfunding opportunities?\b|\bawards?\b|\bbursaries?\b|\bfinancial support\b|\bgrants?\b/i],
-  ["admissions", /\badmission\b|\bhow to apply\b|\bapply to\b|\bapply for\b|\bapplication process\b|\bapply now\b/i],
-  ["international", /\binternational students?\b|\boverseas students?\b|\bvisa and immigration\b|\bstudy in the uk\b|\benglish proficiency\b/i],
-  ["program", /\b(?:beng|bsc|meng|msc|ba|ma|bachelors? degree|masters? degree|degree programme|course overview|course details|curriculum|modules?)\b/i],
+
+/**
+ * MULTI-SIGNAL page classification (spec §3D, §23).
+ *
+ *
+ * A page is NEVER classified from a bare keyword. Signals are scored from:
+ *   A. canonical URL path        (strong +50 / weak +12)
+ *   B. <title>                   (+25 per hit)
+ *   C. H1                        (+25 per hit)
+ *   D. H2 headings               (+10 per hit)
+ *   E. main content (main/article region, nav/footer REMOVED)  (+8 per hit)
+ *   F. category-specific content patterns (+30 — e.g. award amount for
+ *      scholarship, degree/duration for program, tuition fees for tuition)
+ *   G. negative signals (−40 / hard-block): accessibility/legal/site-meta
+ *      pages and "accessibility statement", "skip to content", cookie,
+ *      copyright text.
+ *
+ * Hard gates per category (the user's rules): a page is e.g. `scholarship`
+ * ONLY when the URL/title/H1 says scholarship AND the MAIN CONTENT contains
+ * scholarship-specific information (award amount, eligibility, number of
+ * awards, application info, deadline, recipient criteria). When confidence
+ * is weak → `other` (discovery-only is the default).
+ */
+import type { PageStructure } from "./fetch";
+
+export interface ClassifyResult {
+  category: string;
+  confidence: number; // 0..1
+  signals: string[];
+  negatives: string[];
+  reason: string;
+}
+
+/** Site-meta / legal / generic navigation URLs — never research categories. */
+const META_URL_RE = /(^|\/)(about(-the-site)?|accessibility|privacy|terms|cookies?|sitemap|search|contact|news|events|jobs|alumni|staff|login|signup|legal|complaints?)(\/|$)/i;
+
+/** Strong per-category URL patterns (the path itself targets the topic). */
+const URL_STRONG: [string, RegExp][] = [
+  ["scholarship", /(^|\/)(scholarships?|bursaries?|scholarship-awards?)(\/|$)/i],
+  ["program", /(^|\/)(courses?|programs?|programmes?|degrees?|majors?|pathways?)\/[^/]+\/[a-z0-9]+(-[a-z0-9]+)+[^/]*$/i],
+  ["tuition", /(^|\/)(tuition|fees|fee|cost-of-study)(\/|$)/i],
+  ["living_costs", /(^|\/)(accommodation|housing|living|cost-of-living)(\/|$)/i],
+  ["deadline", /(^|\/)(apply|application|deadlines?|key-dates|important-dates|dates)(\/|$)/i],
+  ["admissions", /(^|\/)(admissions?|entry-requirements|how-to-apply)(\/|$)/i],
+  ["international", /(^|\/)(international|overseas)(\/|$)/i],
+  ["requirements", /(^|\/)(entry-requirements|english-requirements|admission-requirements)(\/|$)/i],
 ];
 
-/** Tie-break priority when content matches several categories equally. */
-const CONTENT_CATEGORY_PRIORITY: Record<string, number> = {
-  program: 0,
-  requirements: 1,
-  tuition: 2,
-  deadline: 3,
-  scholarship: 4,
-  living_costs: 5,
-  admissions: 6,
-  international: 7,
+/** Weak URL signals (word appears in a path segment). */
+const URL_WEAK: [string, RegExp][] = [
+  ["scholarship", /scholarship|bursar|funding/i],
+  ["program", /courses?|programs?|programmes?|degrees?/i],
+  ["tuition", /tuition|fees?|fee/i],
+  ["living_costs", /accommodation|housing|living|cost/i],
+  ["deadline", /apply|application|deadline|dates?/i],
+  ["admissions", /admission|apply|entry/i],
+  ["international", /international|overseas/i],
+  ["requirements", /requirement|entry|english/i],
+];
+
+/** Title/H1/H2 keyword signals per category. */
+const TITLE_SIGNALS: [string, RegExp][] = [
+  ["scholarship", /\b(scholarships?|bursaries?|funding|financial support|awards?)\b/i],
+  ["program", /\b(beng|bsc|meng|msc|ba|ma|mba|phd|degree|programme|program|course)\b/i],
+  ["tuition", /\b(tuition|fees?|fee|cost of study)\b/i],
+  ["living_costs", /\b(living costs?|accommodation|cost of living|student budget)\b/i],
+  ["deadline", /\b(deadline|apply|application|key dates|closing date|UCAS)\b/i],
+  ["admissions", /\b(admissions?|how to apply|entry requirements|application process)\b/i],
+  ["international", /\b(international students?|overseas|visa|immigration)\b/i],
+  ["requirements", /\b(entry requirements?|english language|ielts|toefl)\b/i],
+];
+
+/** Category-specific MAIN-CONTENT evidence (hard gate per category). */
+const CONTENT_EVIDENCE: [string, RegExp][] = [
+  ["scholarship", /\b(award (amount|value)s?|eligib\w+|number of awards?|how to apply|scholarship deadline|recipient\w* criteria|assessment process)\b/i],
+  ["program", /\b(degree|duration|entry requirements?|course modules?|UCAS code|course overview|programme structure|teaching and assessment)\b/i],
+  ["tuition", /\b(tuition fees?|overseas tuition|home tuition|fees for 20\d\d(-\d\d)?|annual tuition|per year tuition)\b/i],
+  ["living_costs", /\b(living costs?|cost of living|monthly expenses?|accommodation (costs?|prices?)|student budget)\b/i],
+  ["deadline", /\b(deadline|applications close|closing date|apply by|equal consideration|key dates|UCAS deadline)\b/i],
+  ["admissions", /\b(admissions?|application process|how to apply|entry requirements|UCAS)\b/i],
+  ["international", /\b(international students?|international applicants?|overseas applicants?|visas?|immigration)\b/i],
+  ["requirements", /\b(entry requirements?|english language requirement|ielts|toefl|a-levels?|international baccalaureate|tmua)\b/i],
+];
+
+/** Negative main-content phrases (footer/legal boilerplate, not page type). */
+const NEGATIVE_CONTENT_RE = /\b(accessibility statement|skip to (main )?content|cookie (policy|notice|preferences)|all rights reserved|©\s*\d{4}|this page was last updated|site map|sitemap)\b/i;
+
+const CATEGORY_LABEL: Record<string, string> = {
+  scholarship: "scholarship", program: "program", tuition: "tuition",
+  living_costs: "living_costs", deadline: "deadline", admissions: "admissions",
+  international: "international", requirements: "requirements", homepage: "homepage",
 };
 
-export function classifyPageByContent(text: string, title = ""): { category: string; hits: number } | null {
-  const t = `${title}\n${(text || "").slice(0, 60000)}`.toLowerCase();
-  let best: { category: string; hits: number } | null = null;
-  for (const [category, pat] of CONTENT_CATEGORY_PATTERNS) {
-    const re = new RegExp(pat.source, "gi"); // count ALL occurrences
-    const matches = t.match(re);
-    const hits = matches ? matches.length : 0;
-    if (hits === 0) continue;
-    if (
-      !best ||
-      hits > best.hits ||
-      (hits === best.hits &&
-        (CONTENT_CATEGORY_PRIORITY[category] ?? 99) < (CONTENT_CATEGORY_PRIORITY[best.category] ?? 99))
-    ) {
-      best = { category, hits };
+const hits = (text: string, re: RegExp): number => {
+  if (!text) return 0;
+  const g = new RegExp(re.source, "gi");
+  const m = text.match(g);
+  return m ? m.length : 0;
+};
+
+export function classifyResearchPage(
+  url: string,
+  structure: PageStructure,
+  label = ""
+): ClassifyResult {
+  const signals: string[] = [];
+  const negatives: string[] = [];
+
+  // ---- G. hard negative: site-meta / legal / generic navigation URLs ----
+  try {
+    const path = new URL(url).pathname;
+    if (META_URL_RE.test(path)) {
+      return {
+        category: "other",
+        confidence: 0.05,
+        signals: [],
+        negatives: ["site-meta/legal URL pattern"],
+        reason: "site-meta/legal/generic navigation page — discovery only",
+      };
+    }
+  } catch {
+    return { category: "other", confidence: 0.05, signals: [], negatives: ["invalid URL"], reason: "invalid URL" };
+  }
+
+  const titleText = `${structure.title}\n${structure.h1.join("\n")}`;
+  const h2Text = structure.h2.join("\n");
+  // Link labels ("Tuition fees", "How to apply", "Scholarships") are
+  // mini-navigation, not content — classification uses the link-free main text.
+  const mainText = structure.mainTextNoLinks || structure.mainText;
+  const fullText = `${structure.fullText}\n${label}`;
+
+  if (NEGATIVE_CONTENT_RE.test(mainText)) {
+    negatives.push("footer/legal boilerplate detected in content");
+  }
+
+  // ---- score each category ----
+  const scores: Record<string, number> = {};
+  const reasons: Record<string, string> = {};
+  const cats = URL_STRONG.map(([c]) => c);
+  for (const cat of cats) {
+    let score = 0;
+    const catSignals: string[] = [];
+
+    // A. URL
+    const sUrl = URL_STRONG.find(([c]) => c === cat)?.[1];
+    const wUrl = URL_WEAK.find(([c]) => c === cat)?.[1];
+    if (sUrl?.test(url)) { score += 50; catSignals.push(`${cat} URL`); }
+    else if (wUrl?.test(url)) { score += 12; catSignals.push(`${cat} URL (weak)`); }
+
+    // B/C. title + H1
+    const tSig = TITLE_SIGNALS.find(([c]) => c === cat)?.[1];
+    if (tSig) {
+      const th = hits(titleText, tSig);
+      if (th > 0) { score += 25 * th; catSignals.push(`${cat} title/H1`); }
+    }
+
+    // D. H2 headings
+    if (tSig) {
+      const hh = hits(h2Text, tSig);
+      if (hh > 0) { score += 10 * hh; catSignals.push(`${cat} H2`); }
+    }
+
+    // E. main content (nav/footer removed)
+    if (tSig) {
+      const ch = Math.min(hits(mainText, tSig), 5);
+      if (ch > 0) { score += 8 * ch; catSignals.push(`${cat} main content`); }
+    }
+
+    // F. category-specific content evidence
+    const ev = CONTENT_EVIDENCE.find(([c]) => c === cat)?.[1];
+    if (ev && ev.test(mainText)) {
+      score += 30;
+      catSignals.push(`${cat} specific content`);
+    }
+
+    scores[cat] = score;
+    reasons[cat] = catSignals.join(", ");
+  }
+
+  // ---- G. content negative weight ----
+  if (negatives.length > 0) {
+    for (const c of Object.keys(scores)) scores[c] -= 40;
+  }
+  // Low-structure pages (no main region, thin content) — cap confidence.
+  const thinContent = !structure.hasMainRegion || mainText.trim().length < 200;
+
+  // ---- hard gates per category (user rules) ----
+  const urlHas = (re: RegExp) => re.test(url);
+  const gateScholarship =
+    (urlHas(/(scholarships?|bursaries?)/i) || /\b(scholarships?|bursaries?)\b/i.test(titleText)) &&
+    CONTENT_EVIDENCE[0][1].test(mainText);
+  const gateProgram =
+    urlHas(/courses?\/[^/]+\/[a-z0-9]+(-[a-z0-9]+)+/i) &&
+    /\b(beng|bsc|meng|msc|ba|ma|mba|phd|degree|programme|program|course)\b/i.test(titleText) &&
+    CONTENT_EVIDENCE[1][1].test(mainText);
+  // Tuition requires actual fee DATA in main content — a bare "Tuition fees"
+  // nav/link label is not enough (user rule 5).
+  const gateTuition =
+    (/\b(annual tuition|overseas tuition|home tuition|fees for 20\d\d|per year tuition)\b/i.test(mainText)) ||
+    (/\btuition fees?\b/i.test(mainText) && /(£|\$|€|usd|gbp| per (year|semester|term|month)|annual|yearly)/i.test(mainText));
+  const gateLiving = CONTENT_EVIDENCE[3][1].test(mainText);
+  const gateDeadline = CONTENT_EVIDENCE[4][1].test(mainText);
+  const gateAdmissions = CONTENT_EVIDENCE[5][1].test(mainText);
+  const gateInternational = CONTENT_EVIDENCE[6][1].test(mainText);
+  const gateRequirements = CONTENT_EVIDENCE[7][1].test(mainText);
+
+  const gates: Record<string, boolean> = {
+    scholarship: gateScholarship,
+    program: gateProgram,
+    tuition: gateTuition,
+    living_costs: gateLiving,
+    deadline: gateDeadline,
+    admissions: gateAdmissions,
+    international: gateInternational,
+    requirements: gateRequirements,
+  };
+
+  // Pick best category among gate-passing ones (score >= 30 required).
+  let bestCat: string | null = null;
+  let bestScore = 0;
+  for (const cat of cats) {
+    if (!gates[cat]) continue;
+    const s = scores[cat] ?? 0;
+    if (s >= 30 && s > bestScore) {
+      bestCat = cat;
+      bestScore = s;
     }
   }
-  return best;
+
+  if (!bestCat) {
+    return {
+      category: "other",
+      confidence: thinContent ? 0.2 : 0.4,
+      signals: [],
+      negatives: [...negatives, "no strong multi-signal match — gates not satisfied"],
+      reason: "discovery only — insufficient multi-signal evidence for any research category",
+    };
+  }
+
+  const confidence = Math.min(0.99, Math.max(0.3, bestScore / 100));
+  return {
+    category: bestCat,
+    confidence: thinContent ? Math.min(confidence, 0.55) : confidence,
+    signals: (reasons[bestCat] || "").split(", ").filter(Boolean),
+    negatives,
+    reason: `classified ${CATEGORY_LABEL[bestCat]} (score ${bestScore})`,
+  };
 }
 
 /** True when the line contains a money RANGE ("£X–£Y", "$1,200 to $1,500") — ranges are never reduced to a scalar. */

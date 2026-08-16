@@ -109,6 +109,73 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/** Text of the first <main> or <article> region, else body without nav/footer/header/aside/form. */
+export function extractMainText(html: string): { text: string; textNoLinks: string; hasMainRegion: boolean } {
+  const mainMatch = /<main[\s>][\s\S]*?<\/main>/i.exec(html) || /<article[\s>][\s\S]*?<\/article>/i.exec(html);
+  if (mainMatch) {
+    const region = mainMatch[0];
+    return {
+      text: htmlToText(region),
+      // Link labels are mini-navigation ("Tuition fees", "How to apply",
+      // "Scholarships") — they must never weigh like main content.
+      textNoLinks: htmlToText(region.replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, " ")),
+      hasMainRegion: true,
+    };
+  }
+  // Fallback: cleaned body — site-wide menus/footers are removed so their
+  // keywords ("scholarship", "study", ...) never weigh like main content.
+  const cleaned = html
+    .replace(/<nav[\s>][\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer[\s>][\s\S]*?<\/footer>/gi, " ")
+    .replace(/<header[\s>][\s\S]*?<\/header>/gi, " ")
+    .replace(/<aside[\s>][\s\S]*?<\/aside>/gi, " ")
+    .replace(/<form[\s>][\s\S]*?<\/form>/gi, " ")
+    .replace(/<script[\s>][\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s>][\s\S]*?<\/style>/gi, " ");
+  const text = htmlToText(cleaned);
+  return {
+    text,
+    textNoLinks: htmlToText(cleaned.replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, " ")),
+    hasMainRegion: false,
+  };
+}
+
+/** Structured view of a fetched page: title, H1/H2 headings, main content. */
+export interface PageStructure {
+  title: string;
+  h1: string[];
+  h2: string[];
+  mainText: string;
+  /** Main content with link labels removed — nav-like text never weighs as content. */
+  mainTextNoLinks: string;
+  fullText: string;
+  hasMainRegion: boolean;
+}
+
+/** Extract title/H1/H2/main-content from raw HTML (regex-based, no deps). */
+export function extractPageStructure(html: string): PageStructure {
+  const stripTags = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const titleM = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  const title = titleM ? stripTags(titleM[1]) : "";
+  const h1: string[] = [];
+  const h1Re = /<h1[^>]*>([\s\S]*?)<\/h1>/gi;
+  let m1: RegExpExecArray | null;
+  while ((m1 = h1Re.exec(html)) !== null) {
+    const t = stripTags(m1[1]);
+    if (t) h1.push(t);
+  }
+  const h2: string[] = [];
+  const h2Re = /<h2[^>]*>([\s\S]*?)<\/h2>/gi;
+  let m2: RegExpExecArray | null;
+  while ((m2 = h2Re.exec(html)) !== null) {
+    const t = stripTags(m2[1]);
+    if (t) h2.push(t);
+  }
+  const { text: mainText, textNoLinks, hasMainRegion } = extractMainText(html);
+  const fullText = htmlToText(html.replace(/<script[\s>][\s\S]*?<\/script>/gi, " ").replace(/<style[\s>][\s\S]*?<\/style>/gi, " "));
+  return { title, h1, h2, mainText, mainTextNoLinks: textNoLinks, fullText, hasMainRegion };
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }

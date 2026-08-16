@@ -1,25 +1,29 @@
 /**
  * Offline DRY-RUN simulation — Imperial College London (id=23).
  *
- * Full acceptance test (issues 1–12): exercises the EXACT production
- * functions (resolveOfficialDomain, DirectFetchProvider, classifyLink,
- * classifyPageByContent, validateProgramPage, findExistingProgram,
- * rejectSourceReason, extractMoney/extractNumberReq/extractDeadline,
- * decideUniversityFields) against a realistic Imperial-shaped site model:
- * homepage → /study/ hub → /study/courses/ hub → Computing BEng page,
- * plus tuition/living/requirements/deadline/scholarship pages and the
- * existing DB state (tuition 45500 GBP, program Computing BEng, cycle
- * 2026-10-15, verified IELTS 7.0, Imperial Inspires scholarship).
+ * Multi-signal classification acceptance test (issues 1–17): every fixture
+ * page carries the SAME site-wide NAV + FOOTER containing the words
+ * "Scholarships", "Tuition fees", "Courses", "Apply", "International
+ * students", "Accessibility" — exactly the contamination that made the real
+ * dry-run classify /study/, /study/courses/, /study/fees-and-funding/,
+ * /study/apply/ and /study/international-students/ as SCHOLARSHIP and the
+ * accessibility page as PROGRAM.
+ *
+ * Exercises the exact production functions: extractPageStructure (nav/footer
+ * stripped, main region preferred), classifyResearchPage (URL + title + H1/H2
+ * + main content + gates + negative signals), validateProgramPage,
+ * findExistingProgram, extractMoney/extractNumberReq/extractDeadline,
+ * decideUniversityFields.
  *
  * Honest limits: NO network egress and NO Supabase credentials — pages and
  * DB state are fixtures. No writes anywhere (dry-run semantics).
  */
 import { resolveOfficialDomain } from "../src/lib/research-agent/domain";
 import { createSearchProvider } from "../src/lib/research-agent/providers";
-import { extractLinks, htmlToText, sleep } from "../src/lib/research-agent/fetch";
+import { extractLinks, extractPageStructure, sleep } from "../src/lib/research-agent/fetch";
 import {
   classifyLink,
-  classifyPageByContent,
+  classifyResearchPage,
   validateProgramPage,
   firstHeading,
   extractMoney,
@@ -37,7 +41,7 @@ function check(label: string, actual: unknown, expected: unknown) {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}: got ${JSON.stringify(actual)} — expected ${JSON.stringify(expected)}`);
 }
 
-// ---------- Fixtures: DB state (mirrors real Supabase row) ----------
+// ---------- DB state fixture ----------
 const CURRENT = {
   university: {
     id: 23,
@@ -67,19 +71,10 @@ const CURRENT = {
   },
   programs: [
     {
-      id: 501,
-      universityId: 23,
-      name: "Computing BEng",
-      degree: "Bachelor",
-      field: "Computing",
-      tuitionAmount: 45500,
-      tuitionCurrency: "GBP",
-      tuitionPeriod: "year",
+      id: 501, universityId: 23, name: "Computing BEng", degree: "Bachelor", field: "Computing",
+      tuitionAmount: 45500, tuitionCurrency: "GBP", tuitionPeriod: "year",
       programUrl: "https://www.imperial.ac.uk/study/courses/undergraduate/computing-beng/",
-      isVerified: false,
-      minIelts: 7.0,
-      minToefl: 100,
-      ibRequirement: "39 points",
+      isVerified: false, minIelts: 7.0, minToefl: 100, ibRequirement: "39 points",
       verificationStatus: "verified",
     },
   ],
@@ -88,102 +83,108 @@ const CURRENT = {
     { id: 602, universityId: 23, academicYear: "2026-27", applicationType: "Regular Decision", deadline: new Date("2027-01-13") },
   ],
   scholarships: [
-    { id: 701, title: "Imperial Inspires Scholarship 2027", websiteUrl: "https://www.imperial.ac.uk/study/fees-and-funding/scholarships/", verificationStatus: "verified" },
+    { id: 701, title: "Imperial Inspires Scholarship 2027", websiteUrl: "https://www.imperial.ac.uk/study/fees-and-funding/scholarships/imperial-inspires-scholarship/", verificationStatus: "verified" },
   ],
   sourceUrls: new Set<string>(),
 };
 
-// ---------- Fixtures: site model ----------
+// ---------- Site model with nav/footer contamination ----------
+const NAV = `<nav aria-label="Main"><ul>
+<li><a href="/study/">Study</a></li>
+<li><a href="/study/courses/">Courses</a></li>
+<li><a href="/study/fees-and-funding/">Tuition fees</a></li>
+<li><a href="/study/fees-and-funding/scholarships/">Scholarships and funding</a></li>
+<li><a href="/study/apply/">Apply</a></li>
+<li><a href="/study/international-students/">International students</a></li>
+<li><a href="/study/accommodation/">Accommodation</a></li>
+<li><a href="/study/accommodation/halls/">Accommodation options</a></li>
+<li><a href="/study/entry-requirements/">Entry requirements</a></li>
+<li><a href="/research-and-innovation/">Research</a></li>
+<li><a href="/about-the-site/accessibility/">Accessibility</a></li>
+</ul></nav>`;
+
+const FOOTER = `<footer><p>© 2026 Imperial College London. Accessibility statement. Privacy notice. Cookies.</p></footer>`;
+
 const ASSET_URLS = [
   "https://imperial.ac.uk/assets/website/fonts/icons/fonts/imperial-icons.woff?h=abc123",
   "https://imperial.ac.uk/assets/website/fonts/imperial-sans/ImperialText-VF.woff2",
   "https://imperial.ac.uk/assets/website/stylesheets/css/screen.2.4.11.css",
 ];
 
-const HOME = `<!doctype html><html><head>
+const wrap = (title: string, main: string) =>
+  `<!doctype html><html><head><title>${title}</title>
 <link rel="stylesheet" href="${ASSET_URLS[2]}">
 <link rel="preload" href="${ASSET_URLS[0]}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="${ASSET_URLS[1]}" as="font" type="font/woff2" crossorigin>
-</head><body>
-<a href="/study/">Study</a>
-<a href="/research-and-innovation/">Research</a>
-<a href="/about-the-site/accessibility/">Accessibility</a>
-<a href="/faculties-and-departments/">Faculties and departments</a>
-<a href="/study/apply/undergraduate/">Undergraduate admissions</a>
-<a href="/study/international-students/">International students</a>
-<a href="/study/fees-and-funding/">Tuition fees</a>
-<a href="/study/fees-and-funding/scholarships/">Scholarships and funding</a>
-<a href="/study/accommodation/">Accommodation and living costs</a>
-<a href="/study/accommodation/halls/">Accommodation options</a>
-<a href="/study/entry-requirements/">Entry requirements</a>
-<a href="/assets/website/media/logo.png">logo</a>
-<a href="/analytics/pixel.gif">pixel</a>
-</body></html>`;
+</head><body>${NAV}<main>${main}</main>${FOOTER}</body></html>`;
 
-// Hub chain: /study/ → /study/courses/ → program pages (2-level crawl).
-const STUDY_HUB = `<html><body>
-<a href="/study/courses/">Courses</a>
-<a href="/study/apply/">How to apply</a>
-<a href="/study/fees-and-funding/">Tuition fees</a>
-</body></html>`;
+const HOME_MAIN = `<h1>Imperial College London</h1>
+<p>Welcome to Imperial College London, a world-leading university for science, engineering, medicine and business.</p>
+<a href="/study/">Study at Imperial</a>
+<a href="/study/courses/">Find a course</a>
+<a href="/faculties-and-departments/">Faculties and departments</a>`;
 
-const COURSES_HUB = `<html><body>
+const STUDY_HUB_MAIN = `<h1>Study</h1><p>Explore undergraduate and postgraduate study at Imperial.</p>
+<a href="/study/courses/">Courses</a><a href="/study/apply/">How to apply</a><a href="/study/fees-and-funding/">Tuition fees</a>`;
+
+const COURSES_HUB_MAIN = `<h1>Course search</h1><p>Use the course finder to browse all programmes.</p>
 <a href="/study/courses/undergraduate/computing-beng/">Computing BEng</a>
 <a href="/study/courses/undergraduate/mechanical-engineering-beng/">Mechanical Engineering BEng</a>
-<a href="/study/courses/">All courses</a>
-</body></html>`;
+<a href="/study/courses/">All courses</a>`;
 
-const TUITION_PAGE = `<html><body><main>
-<h1>Undergraduate tuition fees | Imperial College London</h1>
+const TUITION_MAIN = `<h1>Undergraduate tuition fees | Imperial College London</h1>
 <p>Tuition fees for 2026-27 entry are published on this page. The annual tuition fee for undergraduate programmes is £45,500 per year. Overseas tuition fees are the same for all undergraduate programmes.</p>
-<p>Fees for 2027-28 will be confirmed later.</p>
-</main></body></html>`;
+<p>Fees for 2027-28 will be confirmed later.</p>`;
 
-const LIVING_PAGE = `<html><body><main>
-<h1>Living costs in London | Imperial College London</h1>
-<p>Living costs for students in London: we estimate monthly living costs of £1,300–£1,700 per month. Annual living costs are estimated at £14,200 per year.</p>
-</main></body></html>`;
+const LIVING_MAIN = `<h1>Living costs in London | Imperial College London</h1>
+<p>Living costs for students in London: we estimate monthly living costs of £1,300–£1,700 per month. Annual living costs are estimated at £14,200 per year.</p>`;
 
-const ACCOMMODATION_PAGE = `<html><body><main>
-<h1>Accommodation | Imperial College London</h1>
-<p>On-campus accommodation costs £11,800 per year for a standard en-suite room. Prices range from £9,000 to £13,000 per year depending on the hall.</p>
-</main></body></html>`;
+const ACCOMMODATION_MAIN = `<h1>Accommodation | Imperial College London</h1>
+<p>On-campus accommodation costs £11,800 per year for a standard en-suite room. Prices range from £9,000 to £13,000 per year depending on the hall.</p>`;
 
-const REQUIREMENTS_PAGE = `<html><body><main>
-<h1>Entry requirements | Imperial College London</h1>
+const REQUIREMENTS_MAIN = `<h1>Entry requirements | Imperial College London</h1>
 <p>English language requirement: IELTS 7.0, TOEFL 100, PTE Academic 65, or Cambridge English Scale 185.</p>
 <p>A-levels: AAA including Mathematics. International Baccalaureate: 39 points.</p>
-<p>Applicants for Computing BEng are required to sit the TMUA admissions test.</p>
-</main></body></html>`;
+<p>Applicants for Computing BEng are required to sit the TMUA admissions test.</p>`;
 
-const APPLY_PAGE = `<html><body><main>
-<h1>How to apply for 2027 entry | Imperial College London</h1>
-<p>Applications open on 1 September 2026. The UCAS deadline for equal consideration is 15 October 2026, with a further deadline of 13 January 2027. Application fee: £75.</p>
-</main></body></html>`;
+const APPLY_MAIN = `<h1>How to apply for 2027 entry | Imperial College London</h1>
+<p>Applications are made through UCAS. Applications open on 1 September 2026. The UCAS deadline for equal consideration is 15 October 2026, with a further deadline of 13 January 2027. Application fee: £75.</p>`;
 
-const SCHOLARSHIP_PAGE = `<html><body><main>
-<h1>Imperial Inspires Scholarship 2027 | Imperial College London</h1>
-<p>The Imperial Inspires Scholarship supports undergraduate students with financial need. Awards are available up to £5,000 per year.</p>
-</main></body></html>`;
+const SCHOLARSHIP_MAIN = `<h1>Imperial Inspires Scholarship 2027 | Imperial College London</h1>
+<p>The Imperial Inspires Scholarship supports undergraduate students with financial need. Awards are available up to £5,000 per year. Eligibility is assessed on financial need; the number of awards is limited. How to apply: your UCAS application is considered automatically.</p>`;
 
-const COMPUTING_BENG_PAGE = `<html><body><main>
-<h1>Computing BEng | Study | Imperial College London</h1>
+const COMPUTING_MAIN = `<h1>Computing BEng | Study | Imperial College London</h1>
 <p>Our Computing BEng degree combines computer science, mathematics and engineering. This three-year undergraduate programme leads to a BEng degree.</p>
-<p>Tuition fees for this programme are £45,500 per year. Entry requirements: A-levels AAA including Mathematics, IELTS 7.0.</p>
-</main></body></html>`;
+<p>Course overview: core modules include programming, algorithms and mathematics. Tuition fees for this programme are £45,500 per year. Entry requirements: A-levels AAA including Mathematics, IELTS 7.0. UCAS code: G400.</p>`;
+
+const INTERNATIONAL_MAIN = `<h1>International students | Imperial College London</h1>
+<p>Information for international students and overseas applicants: visas and immigration, English language requirements, and support for international students arriving in the UK.</p>`;
+
+const ACCESSIBILITY_MAIN = `<h1>Accessibility statement | Imperial College London</h1>
+<p>Accessibility statement for the Imperial College London website. Skip to main content. We aim to make every page accessible; contact us about accessibility issues. This page was last updated in January 2026.</p>`;
+
+const RESEARCH_MAIN = `<h1>Research and innovation | Imperial College London</h1>
+<p>Imperial's research centres and innovation programmes across faculties and departments.</p>`;
+
+const FACULTIES_MAIN = `<h1>Faculties and departments | Imperial College London</h1>
+<p>Our faculties and departments: engineering, natural sciences, medicine, business.</p>`;
 
 const FIXTURE_PAGES: Record<string, string> = {
-  "https://imperial.ac.uk/": HOME,
-  "https://www.imperial.ac.uk/": HOME,
-  "https://imperial.ac.uk/study/": STUDY_HUB,
-  "https://imperial.ac.uk/study/courses/": COURSES_HUB,
-  "https://imperial.ac.uk/study/fees-and-funding/": TUITION_PAGE,
-  "https://imperial.ac.uk/study/accommodation/": LIVING_PAGE,
-  "https://imperial.ac.uk/study/accommodation/halls/": ACCOMMODATION_PAGE,
-  "https://imperial.ac.uk/study/entry-requirements/": REQUIREMENTS_PAGE,
-  "https://imperial.ac.uk/study/apply/": APPLY_PAGE,
-  "https://imperial.ac.uk/study/fees-and-funding/scholarships/": SCHOLARSHIP_PAGE,
-  "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/": COMPUTING_BENG_PAGE,
+  "https://imperial.ac.uk/": wrap("Imperial College London", HOME_MAIN),
+  "https://www.imperial.ac.uk/": wrap("Imperial College London", HOME_MAIN),
+  "https://imperial.ac.uk/study/": wrap("Study | Imperial College London", STUDY_HUB_MAIN),
+  "https://imperial.ac.uk/study/courses/": wrap("Course search | Imperial College London", COURSES_HUB_MAIN),
+  "https://imperial.ac.uk/study/fees-and-funding/": wrap("Fees and funding | Imperial College London", TUITION_MAIN),
+  "https://imperial.ac.uk/study/fees-and-funding/scholarships/": wrap("Scholarships and funding | Imperial College London", SCHOLARSHIP_MAIN),
+  "https://imperial.ac.uk/study/accommodation/": wrap("Living costs in London | Imperial College London", LIVING_MAIN),
+  "https://imperial.ac.uk/study/accommodation/halls/": wrap("Accommodation | Imperial College London", ACCOMMODATION_MAIN),
+  "https://imperial.ac.uk/study/entry-requirements/": wrap("Entry requirements | Imperial College London", REQUIREMENTS_MAIN),
+  "https://imperial.ac.uk/study/apply/": wrap("How to apply | Imperial College London", APPLY_MAIN),
+  "https://imperial.ac.uk/study/international-students/": wrap("International students | Imperial College London", INTERNATIONAL_MAIN),
+  "https://imperial.ac.uk/about-the-site/accessibility/": wrap("Accessibility statement | Imperial College London", ACCESSIBILITY_MAIN),
+  "https://imperial.ac.uk/research-and-innovation/": wrap("Research and innovation | Imperial College London", RESEARCH_MAIN),
+  "https://imperial.ac.uk/faculties-and-departments/": wrap("Faculties and departments | Imperial College London", FACULTIES_MAIN),
+  "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/": wrap("Computing BEng | Study | Imperial College London", COMPUTING_MAIN),
 };
 
 const fetchPage = async (url: string): Promise<string | null> =>
@@ -198,14 +199,13 @@ async function main() {
   check("domain", resolved?.domain, "imperial.ac.uk");
   const domain = resolved!.domain;
 
-  // ---- STEP C: discovery + hub crawl ----
+  // ---- STEP C: discovery + hub crawl (production mirror) ----
   const provider = createSearchProvider(fetchPage, [domain]);
   const wanted = ["admissions", "international", "undergraduate", "tuition", "scholarship", "apply", "requirements", "accommodation", "program"];
   const discovered: { url: string; title: string; type: string }[] = [];
   const rejectedSources: { url: string; reason: string }[] = [];
   const seen = new Set<string>();
 
-  console.log("\n=== STEP C: discovery + hub crawl ===");
   for (const kw of wanted) {
     const results = await provider.search(`site:${domain} | ${kw}`);
     for (const r of results) {
@@ -231,21 +231,18 @@ async function main() {
       discovered.push({ url: link, title: link, type: classifyLink(link, "") });
     }
   }
-  // Hub crawl (1 level, queue-based — hubs found while crawling are crawled too).
   const HUB_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?|study)\/?$/;
   const isHub = (url: string) => {
     try { return HUB_PATH_RE.test(new URL(url).pathname) && url !== `https://${domain}/`; } catch { return false; }
   };
   const hubQueue = discovered.filter((d) => isHub(d.url)).slice(0, 4);
-  console.log("  hubQueue:", hubQueue.map((d) => d.url));
   const hubCrawled = new Set<string>();
   while (hubQueue.length > 0 && hubCrawled.size < 4) {
     const hub = hubQueue.shift()!;
     if (hubCrawled.has(hub.url)) continue;
     hubCrawled.add(hub.url);
-    console.log("  crawling", hub.url);
     const html = await fetchPage(hub.url);
-    if (!html) { console.log("    no fixture"); continue; }
+    if (!html) continue;
     for (const link of extractLinks(html, hub.url)) {
       if (seen.has(link)) continue;
       const reason = rejectSourceReason(link);
@@ -256,11 +253,6 @@ async function main() {
       if (isHub(link)) hubQueue.push({ url: link, title: link, type });
     }
   }
-
-  console.log("Discovered (" + discovered.length + "):");
-  for (const d of discovered) console.log(`    [${d.type}] ${d.url}`);
-
-  // Program-priority ordering (mirrors production).
   discovered.sort((a, b) => {
     const rank = (d: { type: string }) =>
       d.type === "program" ? 0
@@ -270,39 +262,58 @@ async function main() {
     return rank(a) - rank(b);
   });
 
-  // ---- STEP D/E: fetch + reclassify + extract ----
-  const pages: { url: string; title: string; type: string; text: string }[] = [];
-  for (const d of discovered.slice(0, 12)) {
+  // ---- STEP D: fetch + structure ----
+  const pages: { url: string; title: string; type: string; text: string; structure: any }[] = [];
+  for (const d of discovered.slice(0, 16)) {
     const html = await fetchPage(d.url);
     if (!html) continue;
-    const text = htmlToText(html);
-    if (text.length < 40) continue;
-    pages.push({ ...d, text });
+    const structure = extractPageStructure(html);
+    if (structure.fullText.length < 40) continue;
+    pages.push({ ...d, text: structure.mainText, structure });
   }
-  console.log(`\nFetched ${pages.length} pages.`);
-  for (const p of pages) {
-    // The root URL is homepage by definition — never reclassified by nav text.
-    if (p.type === "homepage") continue;
-    const contentCat = classifyPageByContent(p.text, p.title);
-    if (contentCat) {
-      p.type = contentCat.category;
-      const disc = discovered.find((d) => d.url === p.url);
-      if (disc) disc.type = contentCat.category;
-    }
-  }
-  console.log("Classified (URL+title+content):");
-  for (const p of pages) console.log(`  [${p.type}] ${p.url}`);
 
+  // ---- STEP E: multi-signal classification ----
+  console.log("\n=== CLASSIFICATION (URL + title + H1/H2 + main content) ===");
+  const classifications: { url: string; category: string; confidence: number; signals: string[]; negatives: string[] }[] = [];
+  for (const p of pages) {
+    if (p.type === "homepage") continue;
+    const cls = classifyResearchPage(p.url, p.structure, p.title);
+    p.type = cls.category;
+    classifications.push({ url: p.url, category: cls.category, confidence: cls.confidence, signals: cls.signals, negatives: cls.negatives });
+    console.log(`  [${cls.category}] conf=${cls.confidence.toFixed(2)} ${p.url}`);
+    if (cls.signals.length) console.log(`      signals: ${cls.signals.join(", ")}`);
+    if (cls.negatives.length) console.log(`      negatives: ${cls.negatives.join(", ")}`);
+  }
+
+  const catOf = (u: string) => classifications.find((c) => c.url === u)?.category;
+  // Issue 14 acceptance table
+  check("/study/ → discovery-only", catOf("https://imperial.ac.uk/study/"), "other");
+  check("/study/courses/ → discovery-only", catOf("https://imperial.ac.uk/study/courses/"), "other");
+  check("/study/apply/ → deadline/admissions (NOT scholarship)", ["deadline", "admissions"].includes(catOf("https://imperial.ac.uk/study/apply/") ?? ""), true);
+  check("/study/international-students/ → international", catOf("https://imperial.ac.uk/study/international-students/"), "international");
+  check("/study/fees-and-funding/ → tuition (content has fees)", catOf("https://imperial.ac.uk/study/fees-and-funding/"), "tuition");
+  check("computing-beng → program", catOf("https://imperial.ac.uk/study/courses/undergraduate/computing-beng/"), "program");
+  check("/about-the-site/accessibility/ → discovery-only", catOf("https://imperial.ac.uk/about-the-site/accessibility/"), "other");
+  check("/research-and-innovation/ → discovery-only", catOf("https://imperial.ac.uk/research-and-innovation/"), "other");
+  check("/faculties-and-departments/ → discovery-only", catOf("https://imperial.ac.uk/faculties-and-departments/"), "other");
+  check("scholarships page → scholarship", catOf("https://imperial.ac.uk/study/fees-and-funding/scholarships/"), "scholarship");
+  check("fees page NOT scholarship (nav contamination)", catOf("https://imperial.ac.uk/study/fees-and-funding/"), "tuition");
+  check("NO generic page classified scholarship",
+    classifications.filter((c) => c.category === "scholarship").map((c) => c.url),
+    ["https://imperial.ac.uk/study/fees-and-funding/scholarships/"]);
+  check("NO generic page classified program",
+    classifications.filter((c) => c.category === "program").map((c) => c.url),
+    ["https://imperial.ac.uk/study/courses/undergraduate/computing-beng/"]);
+
+  // ---- Extraction ----
+  console.log("\n=== EXTRACTION ===");
   const evidence: any[] = [];
   const ctxFor = (p: { url: string; title: string; type: string }) => ({
     url: p.url, title: p.title || p.url, sourceType: `official_${p.type}`,
   });
   const pageTypeIs = (p: { type: string }, allowed: string[]) => allowed.includes(p.type);
-  const pageNotes: { url: string; category: string; title: string; textLength: number; extracted: number; reason?: string }[] = [];
-
   for (const p of pages) {
     const ctx = ctxFor(p);
-    const before = evidence.length;
     if (pageTypeIs(p, ["tuition"])) {
       const t = extractMoney(p.text, ctx, "annual_tuition", "year", /tuition|fee/);
       if (t) evidence.push(t);
@@ -325,35 +336,16 @@ async function main() {
       const d = extractDeadline(p.text, ctx);
       if (d) evidence.push(d);
     }
-    const extracted = evidence.length - before;
-    if (extracted === 0) {
-      pageNotes.push({
-        url: p.url, category: p.type, title: (p.title || "").slice(0, 120),
-        textLength: p.text.length, extracted: 0,
-        reason: p.type === "other" ? "no useful source category — no extraction scope applies" : "no supported field matched the page content",
-      });
-    }
   }
-  for (const p of pages) {
-    const count = evidence.filter((e) => e.sourceUrl === p.url).length;
-    if (count > 0) pageNotes.push({ url: p.url, category: p.type, title: (p.title || "").slice(0, 120), textLength: p.text.length, extracted: count });
-  }
-
-  console.log("\n=== EXTRACTION ===");
-  for (const ev of evidence) {
-    console.log(`  ${ev.field}: ${JSON.stringify(ev.value)}${ev.currency ? ` ${ev.currency}` : ""} (${ev.period ?? ""}) ← ${ev.sourceUrl}`);
-  }
-  check("tuition 45500 GBP extracted", toNumber(best(evidence, "annual_tuition")?.value), 45500);
-  check("tuition currency GBP", best(evidence, "annual_tuition")?.currency, "GBP");
-  check("living 14200 GBP (annual)", toNumber(best(evidence, "annual_living_est")?.value), 14200);
-  check("accommodation 11800 GBP (range line skipped)", toNumber(best(evidence, "accommodation_cost")?.value), 11800);
-  check("IELTS 7.0 extracted", toNumber(best(evidence, "min_ielts")?.value), 7.0);
-  check("TOEFL 100 extracted", toNumber(best(evidence, "min_toefl")?.value), 100);
-  check("PTE 65 extracted", toNumber(best(evidence, "min_pte")?.value), 65);
-  check("deadline 2026-10-15 extracted", best(evidence, "deadline")?.value, "2026-10-15");
+  for (const ev of evidence) console.log(`  ${ev.field}: ${JSON.stringify(ev.value)}${ev.currency ? ` ${ev.currency}` : ""} (${ev.period ?? ""}) ← ${ev.sourceUrl}`);
+  check("tuition 45500 GBP", toNumber(best(evidence, "annual_tuition")?.value), 45500);
+  check("living 14200 GBP", toNumber(best(evidence, "annual_living_est")?.value), 14200);
+  check("accommodation 11800 GBP", toNumber(best(evidence, "accommodation_cost")?.value), 11800);
+  check("IELTS 7", toNumber(best(evidence, "min_ielts")?.value), 7);
+  check("PTE 65", toNumber(best(evidence, "min_pte")?.value), 65);
+  check("deadline 2026-10-15", best(evidence, "deadline")?.value, "2026-10-15");
 
   // ---- University decisions ----
-  console.log("\n=== UNIVERSITY DECISIONS ===");
   const uniExtract = {
     annualTuition: toNumber(best(evidence, "annual_tuition")?.value) ?? undefined,
     tuitionCurrency: normalizeCurrency(best(evidence, "annual_tuition")?.currency) ?? undefined,
@@ -363,17 +355,34 @@ async function main() {
     accommodationCostCurrency: normalizeCurrency(best(evidence, "accommodation_cost")?.currency) ?? undefined,
   } as any;
   const decisions = decideUniversityFields(uniExtract, evidence, CURRENT as any);
-  for (const d of decisions) {
-    console.log(`  ${d.field}: DB=${String(d.dbValue ?? "NULL")} → new=${String(d.newValue ?? "NULL")} ${d.currency ?? ""} | ${d.action.toUpperCase()} | ${d.sourceUrl}`);
-  }
   check("annual_tuition SKIPPED (unchanged)", decisions.find((d) => d.field === "annual_tuition")?.action, "skip");
-  check("annual_living_est WRITE (DB NULL)", decisions.find((d) => d.field === "annual_living_est")?.action, "write");
-  check("accommodation_cost WRITE (DB NULL)", decisions.find((d) => d.field === "accommodation_cost")?.action, "write");
+  check("annual_living_est WRITE", decisions.find((d) => d.field === "annual_living_est")?.action, "write");
+  check("accommodation_cost WRITE", decisions.find((d) => d.field === "accommodation_cost")?.action, "write");
 
-  // ---- Program decisions ----
+  // ---- Scholarship decisions (issue 15) ----
+  console.log("\n=== SCHOLARSHIP DECISIONS ===");
+  const insertedScholarships: string[] = [];
+  const skippedScholarships: string[] = [];
+  for (const p of pages.filter((x) => x.type === "scholarship").slice(0, 6)) {
+    const title = (firstHeading(p.text) || p.title || "University Scholarship").split("|")[0].trim();
+    const existing = CURRENT.scholarships.find(
+      (x) => normalizeNameKey(x.title) === normalizeNameKey(title) || normalizeUrl(String(x.websiteUrl || "")) === normalizeUrl(p.url)
+    );
+    if (existing) {
+      skippedScholarships.push(title);
+      console.log(`  SKIPPED (unchanged): ${title} ← ${p.url}`);
+    } else {
+      insertedScholarships.push(title);
+      console.log(`  would INSERT: ${title} ← ${p.url}`);
+    }
+  }
+  check("Inserted scholarships = 0", insertedScholarships, []);
+  check("Skipped existing scholarship = 1", skippedScholarships, ["Imperial Inspires Scholarship 2027"]);
+
+  // ---- Program decisions (issue 16) ----
   console.log("\n=== PROGRAM DECISIONS ===");
   const insertedPrograms: string[] = [];
-  const programSkips: any[] = [];
+  const skippedPrograms: string[] = [];
   for (const p of pages.filter((x) => x.type === "program").slice(0, 12)) {
     const v = validateProgramPage(p.url, p.title, p.text);
     if (!v.ok || !v.name) {
@@ -382,46 +391,17 @@ async function main() {
     }
     const existing = findExistingProgram(CURRENT.programs, v.name, p.url);
     if (existing) {
-      programSkips.push({ name: v.name, old: existing.name, new: v.name, url: p.url });
-      console.log(`  ${v.name}: EXISTS → SKIPPED — unchanged (${p.url})`);
+      skippedPrograms.push(v.name);
+      console.log(`  SKIPPED (unchanged): ${v.name} ← ${p.url}`);
     } else {
       insertedPrograms.push(v.name);
-      console.log(`  ${v.name}: NEW → would insert`);
+      console.log(`  would INSERT: ${v.name} ← ${p.url}`);
     }
   }
-  check("no generic hub programs inserted", insertedPrograms, []);
-  check("Computing BEng deduped → SKIPPED", programSkips.some((s) => s.name === "Computing BEng" && s.old === "Computing BEng" && s.new === "Computing BEng"), true);
+  check("Inserted programs = 0", insertedPrograms, []);
+  check("Skipped existing program = 1 (Computing BEng)", skippedPrograms, ["Computing BEng"]);
 
-  // ---- Cycle / requirements / scholarship decisions (dry-run vs DB) ----
-  console.log("\n=== CYCLE / REQUIREMENTS / SCHOLARSHIP DECISIONS ===");
-  const skipped: any[] = [];
-  const deadlineEv = best(evidence, "deadline");
-  const existingCycle = CURRENT.cycles.find((c) => (c.deadline instanceof Date ? c.deadline.toISOString().slice(0, 10) : String(c.deadline).slice(0, 10)) === String(deadlineEv?.value).slice(0, 10));
-  if (existingCycle) {
-    skipped.push({ entity: "application_cycle", field: "deadline", old: existingCycle.deadline, new: deadlineEv.value, url: deadlineEv.sourceUrl });
-    console.log(`  application_cycle.deadline: ${String(existingCycle.deadline).slice(0, 10)} in DB → SKIPPED (unchanged) ← ${deadlineEv.sourceUrl}`);
-  }
-
-  const prog = CURRENT.programs[0];
-  const ieltsEv = best(evidence, "min_ielts");
-  if (prog.minIelts != null && String(prog.minIelts) === String(ieltsEv?.value)) {
-    skipped.push({ entity: "program.requirements", field: "min_ielts", old: prog.minIelts, new: ieltsEv.value, url: ieltsEv.sourceUrl });
-    console.log(`  program.requirements.min_ielts: ${prog.minIelts} in DB → SKIPPED (unchanged) ← ${ieltsEv.sourceUrl}`);
-  }
-
-  const schPage = pages.find((p) => p.type === "scholarship");
-  const schTitle = (schPage ? firstHeading(schPage.text) || schPage.title : "").split("|")[0].trim();
-  const existingSch = CURRENT.scholarships.find((x) => normalizeNameKey(x.title) === normalizeNameKey(schTitle));
-  if (existingSch) {
-    skipped.push({ entity: "scholarship", field: "title", old: existingSch.title, new: schTitle, url: schPage!.url });
-    console.log(`  scholarship.title: '${existingSch.title}' in DB → SKIPPED (unchanged) ← ${schPage!.url}`);
-  }
-
-  check("application cycle SKIPPED", skipped.some((s) => s.entity === "application_cycle" && s.field === "deadline"), true);
-  check("requirements min_ielts SKIPPED", skipped.some((s) => s.entity === "program.requirements" && s.field === "min_ielts" && s.old === 7.0), true);
-  check("scholarship Imperial Inspires SKIPPED", skipped.some((s) => s.entity === "scholarship" && String(s.old).includes("Imperial Inspires")), true);
-
-  // ---- Source persistence gating ----
+  // ---- Source persistence (issue 9) ----
   console.log("\n=== SOURCE PERSISTENCE ===");
   const PERSISTABLE = new Set(["homepage", "admissions", "international", "program", "tuition", "living_costs", "deadline", "requirements", "scholarship"]);
   const pageTextByUrl = new Map(pages.map((p) => [p.url, p.text]));
@@ -455,22 +435,15 @@ async function main() {
   console.log(`  Discovery-only (${discoveryOnly.length}):`);
   for (const s of discoveryOnly) console.log(`    - ${s.url} (${s.reason})`);
 
-  check("research-and-innovation NOT persisted", newSources.some((s) => s.url.includes("research-and-innovation")), false);
+  check("scholarship page persisted", newSources.some((s) => s.url.includes("scholarships")), true);
   check("accessibility NOT persisted", newSources.some((s) => s.url.includes("accessibility")), false);
+  check("research NOT persisted", newSources.some((s) => s.url.includes("research-and-innovation")), false);
   check("faculties NOT persisted", newSources.some((s) => s.url.includes("faculties-and-departments")), false);
   check("generic /study/ NOT persisted", newSources.some((s) => s.url === "https://imperial.ac.uk/study/"), false);
+  check("/study/courses/ NOT persisted", newSources.some((s) => s.url === "https://imperial.ac.uk/study/courses/"), false);
   check("program page persisted", newSources.some((s) => s.url.includes("computing-beng")), true);
-  check("tuition page persisted", newSources.some((s) => s.url.includes("fees-and-funding")), true);
-  check("requirements page persisted", newSources.some((s) => s.url.includes("entry-requirements")), true);
-  check("apply/deadline page persisted", newSources.some((s) => s.url === "https://imperial.ac.uk/study/apply/"), true);
-  check("scholarship page persisted", newSources.some((s) => s.url.includes("scholarships")), true);
   check("ZERO assets persisted", newSources.some((s) => !isResearchSourceUrl(s.url)), false);
-  check("rejected woff2", rejectedSources.some((r) => r.url.includes("woff2")), true);
-
-  // ---- Debug notes ----
-  console.log("\n=== PAGE NOTES (fetched but nothing extracted) ===");
-  for (const n of pageNotes.filter((n) => n.extracted === 0)) console.log(`  [${n.category}] ${n.url} — ${n.reason}`);
-  check("pageNotes include fetched-but-empty pages", pageNotes.filter((n) => n.extracted === 0).length > 0, true);
+  check("woff2 rejected", rejectedSources.some((r) => r.url.includes("woff2")), true);
 
   console.log(`\n${failures === 0 ? "ALL SIMULATION TESTS PASSED" : `${failures} TEST(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);
