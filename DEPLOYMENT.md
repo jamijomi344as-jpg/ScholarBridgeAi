@@ -14,9 +14,11 @@ service.
    - `scholarbridge-db` (managed PostgreSQL, free)
    - `scholarbridge-ai` (web service)
 4. During the first build Render runs:
-   `npm install && npm run db:push && npm run build`
-   - `npm run db:push` runs `drizzle-kit push --force`, which creates every
-     table in `src/db/schema.ts` against the managed database automatically.
+   `npm install && npm run build`
+   - **IMPORTANT:** `db:push` is NOT run automatically. The Supabase database
+     is the source of truth — the app adapts to it and never modifies it.
+     If you ever decide to change the schema, run `npm run db:push` manually
+     and only after reviewing what it will change.
 5. After the first deploy, set the **secret** env vars in the web service's
    **Environment** tab:
    - `GEMINI_API_KEY` — required for AI features (Gemini 2.5 Flash)
@@ -32,7 +34,7 @@ service.
 
 1. In Render, click **New → Web Service** and connect the repository.
 2. **Name:** `scholarbridge-ai` · **Runtime:** Node
-3. **Build Command:** `npm install && npm run db:push && npm run build`
+3. **Build Command:** `npm install && npm run build`
 4. **Start Command:** `npm start`
 5. **Health Check Path:** `/api/health`
 6. Add a managed PostgreSQL database (`New → PostgreSQL`) and copy its

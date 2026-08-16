@@ -14,7 +14,11 @@ services:
     name: scholarbridge-ai
     runtime: node
     plan: free
-    buildCommand: npm install && npm run db:push && npm run build
+    # IMPORTANT: db:push is intentionally NOT in the build command.
+    # The Supabase database is the source of truth — the app must adapt to
+    # it, NOT modify it automatically. Run db:push manually only when you
+    # explicitly decide to change the database schema.
+    buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true

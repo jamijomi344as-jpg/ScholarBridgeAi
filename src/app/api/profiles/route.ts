@@ -27,7 +27,7 @@ export async function GET() {
       return NextResponse.json(
         {
           error:
-            "Database schema is out of date. Please run `npm run db:push` (or redeploy — Render runs it automatically) to add the new columns.",
+            "Database schema is out of date. The application is configured to NEVER modify the database automatically. Please review the app schema vs your Supabase schema and align them manually.",
         },
         { status: 500 }
       );
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Database schema is out of date. Please run `npm run db:push` (or redeploy — Render runs it automatically) to add the new columns.",
+            "Database schema is out of date. The application is configured to NEVER modify the database automatically. Please review the app schema vs your Supabase schema and align them manually.",
         },
         { status: 500 }
       );
