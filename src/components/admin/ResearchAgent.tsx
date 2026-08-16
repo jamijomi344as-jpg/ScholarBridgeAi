@@ -127,6 +127,7 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
     (report?.insertedScholarships?.length ?? 0);
   const skippedCount = report?.skippedFields?.length ?? 0;
   const reviewCount = report?.reviewRequired?.length ?? 0;
+  const rejectedCount = report?.rejectedSources?.length ?? 0;
   const errorCount = report?.errors?.length ?? 0;
 
   return (
@@ -258,12 +259,13 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
             Audit Report — {report.universityName} {report.dryRun ? "(dry run)" : ""}
           </div>
           <div className="p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-4">
               {[
                 { label: "Updated", value: updatedCount, cls: "text-indigo-700" },
                 { label: "Inserted", value: insertedCount, cls: "text-emerald-700" },
                 { label: "Skipped", value: skippedCount, cls: "text-slate-500" },
                 { label: "Review req.", value: reviewCount, cls: "text-amber-700" },
+                { label: "Rejected", value: rejectedCount, cls: "text-red-700" },
                 { label: "Errors", value: errorCount, cls: "text-red-700" },
               ].map((s) => (
                 <div key={s.label} className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
@@ -275,12 +277,44 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
 
             {report.updatedFields.length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Updated fields</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {report.updatedFields.map((f: { field: string }) => (
-                    <span key={f.field} className="rounded-md bg-indigo-50 text-indigo-700 px-2 py-0.5 text-[10px] font-bold">
-                      {f.field}
-                    </span>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Updated fields ({report.updatedFields.length})</p>
+                <div className="space-y-1.5">
+                  {report.updatedFields.map((f: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2.5 py-1.5 text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-indigo-700">{f.field}</span>
+                        <span className="text-[9px] font-black uppercase tracking-wide text-indigo-500">{f.action}</span>
+                        {f.confidence != null && (
+                          <span className="ml-auto text-[10px] text-slate-500">confidence {(Number(f.confidence) * 100).toFixed(0)}%</span>
+                        )}
+                      </div>
+                      <p className="text-slate-600 mt-0.5">
+                        {String(f.dbValue ?? "NULL")}{f.currency ? ` ${f.currency}` : ""} → {String(f.newValue ?? "NULL")}{f.currency ? ` ${f.currency}` : ""}
+                      </p>
+                      {f.sourceUrl && (
+                        <a href={f.sourceUrl} target="_blank" rel="noopener noreferrer" className="block text-indigo-600 hover:underline truncate mt-0.5">
+                          {f.sourceTitle || f.sourceUrl}
+                        </a>
+                      )}
+                      {f.reason && <p className="text-slate-400 mt-0.5">{f.reason}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {report.skippedFields.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Skipped / unchanged ({report.skippedFields.length})</p>
+                <div className="space-y-1">
+                  {report.skippedFields.map((s: any, i: number) => (
+                    <p key={i} className="text-[11px] text-slate-500">
+                      {typeof s === "string" ? s : (
+                        <>
+                          <b className="text-slate-600">{s.field}</b>{" "}
+                          {String(s.dbValue ?? "NULL")}{s.currency ? ` ${s.currency}` : ""} → {String(s.newValue ?? "NULL")}{s.currency ? ` ${s.currency}` : ""} — {s.reason}
+                        </>
+                      )}
+                    </p>
                   ))}
                 </div>
               </div>
@@ -298,18 +332,30 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
             {report.reviewRequired.length > 0 && (
               <div className="mb-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Review required</p>
-                {report.reviewRequired.map((r: string | { field: string }) => (
-                  <p key={typeof r === "string" ? r : (r as { field: string }).field} className="text-[11px] text-amber-700">
+                {report.reviewRequired.map((r: any, i: number) => (
+                  <p key={i} className="text-[11px] text-amber-700">
                     <AlertTriangle className="h-3 w-3 inline mr-1" />
-                    {typeof r === "string" ? r : (r as { field: string }).field}
+                    {typeof r === "string" ? r : `${r.field} — ${r.reason || "manual check needed"}`}
                   </p>
                 ))}
+              </div>
+            )}
+            {report.rejectedSources?.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Rejected sources ({report.rejectedSources.length})</p>
+                <div className="max-h-28 overflow-y-auto space-y-0.5">
+                  {report.rejectedSources.slice(0, 30).map((s: any, i: number) => (
+                    <p key={i} className="text-[10px] text-red-500 truncate">
+                      <XCircle className="h-3 w-3 inline mr-1" />{s.url} <span className="text-red-300">({s.reason})</span>
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
             {report.newSources.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Sources ({report.newSources.length})</p>
-                {report.newSources.slice(0, 10).map((s: any) => (
+                {report.newSources.slice(0, 15).map((s: any) => (
                   <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-indigo-600 hover:underline truncate">
                     {s.title || s.url}
                   </a>

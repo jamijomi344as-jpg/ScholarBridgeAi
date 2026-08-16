@@ -6,6 +6,7 @@ import { fetchPageText, fetchHomepage, extractLinks, htmlToText, sleep } from ".
 import { resolveOfficialDomain, pickOfficialDomainFromSearch } from "./domain";
 import {
   classifyLink,
+  isMeaningfulSourceTitle,
   extractMoney,
   extractNumberReq,
   extractRequiredFlag,
@@ -20,6 +21,7 @@ import {
   readCurrent,
   upsertSource,
   writeUniversity,
+  decideUniversityFields,
   upsertProgram,
   upsertRequirements,
   upsertCycle,
@@ -27,7 +29,8 @@ import {
 } from "./persist";
 import { logRunStart, logRunFinish, buildReport } from "./audit";
 import { normalizeNameKey, toNumber, normalizeCurrency } from "./normalize";
-import type { RunRequest, RunStatus, AuditReport, SourceEvidence } from "./types";
+import { isResearchSourceUrl, rejectSourceReason } from "./urlFilter";
+import type { RunRequest, RunStatus, AuditReport, SourceEvidence, FieldDecision } from "./types";
 
 export type ProgressFn = (message: string) => void;
 
@@ -40,14 +43,15 @@ export async function runUniversity(
 ): Promise<AuditReport> {
   const logId = await logRunStart(universityId, scopes);
   const errors: string[] = [];
-  const updatedFields: string[] = [];
-  const skippedFields: string[] = [];
-  const reviewRequired: string[] = [];
+  const updatedFields: FieldDecision[] = [];
+  const skippedFields: (string | FieldDecision)[] = [];
+  const reviewRequired: (string | FieldDecision)[] = [];
   const insertedPrograms: string[] = [];
   const updatedRequirements: string[] = [];
   const insertedCycles: string[] = [];
   const insertedScholarships: string[] = [];
   const newSources: { url: string; title: string }[] = [];
+  const rejectedSources: { url: string; reason: string }[] = [];
   const evidence: SourceEvidence[] = [];
   let universityName = `#${universityId}`;
   let sourcesReadBack = 0;
@@ -88,7 +92,7 @@ export async function runUniversity(
       const report = buildReport({
         universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
         insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-        newSources, errors, sourcesReadBack, duplicatesPrevented,
+        newSources, rejectedSources, errors, sourcesReadBack, duplicatesPrevented,
       });
       await logRunFinish(logId, report);
       return report;
@@ -123,6 +127,14 @@ export async function runUniversity(
       const results = await provider.search(`site:${domain} | ${kw}`);
       for (const r of results) {
         if (seen.has(r.url)) continue;
+        // Strict source filtering (spec §3D): fonts/css/js/images/tracking are
+        // never research sources — rejected up front.
+        const rejectReason = rejectSourceReason(r.url);
+        if (rejectReason) {
+          seen.add(r.url);
+          rejectedSources.push({ url: r.url, reason: rejectReason });
+          continue;
+        }
         seen.add(r.url);
         const type = classifyLink(r.url, r.title);
         discovered.push({ url: r.url, title: r.title || kw, type });
@@ -130,12 +142,28 @@ export async function runUniversity(
       await sleep(AGENT_CONFIG.fetchDelayMs);
     }
 
-    // Also scan homepage links (breadth-first, capped).
+    // Also scan homepage links (breadth-first, capped) — HTML/PDF pages only.
     progress("Scanning official homepage links...");
-    const homeHtml = await fetchHomepage(domain);
-    if (homeHtml) {
-      for (const link of extractLinks(homeHtml, `https://${domain}/`).slice(0, maxPages * 3)) {
+    const home = await fetchHomepage(domain);
+    if (home) {
+      // The homepage itself is the most authoritative source — always kept
+      // as an official_homepage research page (spec §3D).
+      if (!seen.has(home.url)) {
+        seen.add(home.url);
+        discovered.unshift({
+          url: home.url,
+          title: `${universityName} official homepage`,
+          type: "homepage",
+        });
+      }
+      for (const link of extractLinks(home.html, home.url).slice(0, maxPages * 3)) {
         if (seen.has(link) || discovered.length >= maxPages * 2) continue;
+        const rejectReason = rejectSourceReason(link);
+        if (rejectReason) {
+          seen.add(link);
+          rejectedSources.push({ url: link, reason: rejectReason });
+          continue;
+        }
         seen.add(link);
         discovered.push({ url: link, title: link, type: classifyLink(link, "") });
       }
@@ -146,6 +174,8 @@ export async function runUniversity(
     const fetched = new Set<string>();
     for (const d of discovered.slice(0, maxPages)) {
       if (fetched.has(d.url)) continue;
+      // Defense in depth: never fetch assets that slipped past discovery.
+      if (!isResearchSourceUrl(d.url)) continue;
       fetched.add(d.url);
       progress(`Fetching ${d.type} page...`);
       const html = await fetchPage(d.url);
@@ -156,32 +186,37 @@ export async function runUniversity(
       await sleep(AGENT_CONFIG.fetchDelayMs);
     }
 
-    // STEP E — extract (generic regex + optional AI assist) (spec §3E, §9)
+    // STEP E — extract (generic regex + optional AI assist) (spec §3E, §9).
+    // Page-type gate + per-field hints: a tuition page only contributes
+    // tuition evidence, a living-costs page only living/accommodation
+    // evidence, etc. — generic, never by university name.
     progress("Extracting structured data...");
     const ctxFor = (p: { url: string; title: string; type: string }) => ({
       url: p.url,
       title: p.title || p.url,
       sourceType: `official_${p.type}`,
     });
+    const pageTypeIs = (p: { type: string }, allowed: string[]) =>
+      allowed.includes(p.type) || p.type === "other";
 
     for (const p of pages) {
       const ctx = ctxFor(p);
       const ai = await aiExtract(p.text, p.url);
 
-      if (scopes.includes("tuition")) {
-        const t = extractMoney(p.text, ctx, "annual_tuition");
+      if (scopes.includes("tuition") && pageTypeIs(p, ["tuition"])) {
+        const t = extractMoney(p.text, ctx, "annual_tuition", "year", /tuition|fee/);
         if (t) evidence.push(t);
         if (ai?.tuition?.amount && ai.tuition.currency) {
           evidence.push({ field: "annual_tuition", value: ai.tuition.amount, currency: ai.tuition.currency, period: ai.tuition.period, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });
         }
       }
-      if (scopes.includes("living_costs")) {
-        const living = extractMoney(p.text, ctx, "annual_living_est");
+      if (scopes.includes("living_costs") && pageTypeIs(p, ["living_costs"])) {
+        const living = extractMoney(p.text, ctx, "annual_living_est", "year", /living|maintenance/);
         if (living) evidence.push({ ...living, field: "annual_living_est" });
-        const acc = extractMoney(p.text, ctx, "accommodation_cost");
+        const acc = extractMoney(p.text, ctx, "accommodation_cost", "year", /accommodation|housing|room/);
         if (acc) evidence.push({ ...acc, field: "accommodation_cost" });
       }
-      if (scopes.includes("requirements")) {
+      if (scopes.includes("requirements") && pageTypeIs(p, ["requirements", "admissions", "international"])) {
         const ielts = extractNumberReq(p.text, ctx, "min_ielts", "IELTS");
         if (ielts) evidence.push(ielts);
         if (ai?.ielts != null) evidence.push({ field: "min_ielts", value: ai.ielts, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "AI extraction", confidence: 0.6 });
@@ -201,7 +236,7 @@ export async function runUniversity(
         const actReq = extractRequiredFlag(p.text, ctx, "act_required_no_min", "ACT");
         if (actReq) evidence.push(actReq);
       }
-      if (scopes.includes("university")) {
+      if (scopes.includes("university") && pageTypeIs(p, ["homepage", "international"])) {
         const f = extractFoundedYear(p.text, ctx);
         if (f) evidence.push(f);
         const ar = extractAcceptanceRate(p.text, ctx);
@@ -209,10 +244,10 @@ export async function runUniversity(
         const intl = extractIntlStudents(p.text, ctx);
         if (intl.count) evidence.push(intl.count);
         if (intl.pct) evidence.push(intl.pct);
-        const fee = extractMoney(p.text, ctx, "application_fee", "application");
+        const fee = extractMoney(p.text, ctx, "application_fee", "application", /application|apply/);
         if (fee && /fee|apply|application/i.test(fee.exactEvidence)) evidence.push({ ...fee, field: "application_fee" });
       }
-      if (scopes.includes("application_cycles")) {
+      if (scopes.includes("application_cycles") && pageTypeIs(p, ["deadline", "admissions"])) {
         const d = extractDeadline(p.text, ctx);
         if (d) evidence.push(d);
       }
@@ -240,23 +275,30 @@ export async function runUniversity(
         applicationFee: toNumber(best(evidence, "application_fee")) ?? undefined,
         applicationFeeCurrency: normalizeCurrency(best(evidence, "application_fee")?.currency) ?? undefined,
       };
+      // SAME decision logic for dry-run and real run — the dry-run report is
+      // an exact preview of what a real run would write (CASE A–E).
+      const decisions = decideUniversityFields(uniExtract, evidence, current);
+      for (const d of decisions) {
+        progress(
+          `${d.field}: ${String(d.dbValue ?? "NULL")} → ${String(d.newValue ?? "NULL")}${d.currency ? ` ${d.currency}` : ""} — ${d.action.toUpperCase()} (${d.reason})`
+        );
+      }
       if (!dryRun) {
         const res = await writeUniversity(universityId, uniExtract, evidence, current);
         updatedFields.push(...res.updated);
         skippedFields.push(...res.skipped);
         reviewRequired.push(...res.review);
       } else {
-        // Dry-run: report what WOULD be written (only strong evidence).
-        for (const f of ["founded_year", "annual_tuition", "annual_living_est", "accommodation_cost", "application_fee", "acceptance_rate", "international_students_count", "international_students_percentage"]) {
-          if (best(evidence, f)) updatedFields.push(f);
-        }
+        updatedFields.push(...decisions.filter((d) => d.action === "write" || d.action === "update"));
+        skippedFields.push(...decisions.filter((d) => d.action === "skip"));
+        reviewRequired.push(...decisions.filter((d) => d.action === "review"));
       }
     }
 
     // Programs (spec §3E)
     if (scopes.includes("programs")) {
       progress("Processing programs...");
-      const programPages = pages.filter((p) => p.type === "programs").slice(0, AGENT_CONFIG.maxPrograms);
+      const programPages = pages.filter((p) => p.type === "program").slice(0, AGENT_CONFIG.maxPrograms);
       for (const p of programPages) {
         const name = p.title.replace(/\s*[-|]\s*.*$/, "").trim() || "Program";
         const t = best(evidence, "annual_tuition");
@@ -322,9 +364,9 @@ export async function runUniversity(
     // Scholarships (spec §12) — amount_usd ONLY for USD sources.
     if (scopes.includes("scholarships")) {
       progress("Processing scholarships...");
-      const schPages = pages.filter((p) => p.type === "scholarships").slice(0, 6);
+      const schPages = pages.filter((p) => p.type === "scholarship").slice(0, 6);
       for (const p of schPages) {
-        const t = extractMoney(p.text, ctxFor(p), "scholarship_amount", "year");
+        const t = extractMoney(p.text, ctxFor(p), "scholarship_amount", "year", /scholarship|award|grant/);
         const sch = {
           title: (p.title || "University Scholarship").slice(0, 150),
           websiteUrl: p.url,
@@ -342,24 +384,67 @@ export async function runUniversity(
       }
     }
 
-    // Sources (spec §4, §5)
+    // Sources (spec §4, §5) — only real research pages are saved:
+    // HTML pages, official PDFs, official document pages. Fonts, CSS, JS,
+    // images, tracking endpoints and generic asset paths are rejected.
     if (scopes.includes("sources")) {
       progress("Persisting verified sources...");
+      const isAcceptableSource = (url: string, title: string, type: string): { ok: boolean; reason?: string } => {
+        const reason = rejectSourceReason(url);
+        if (reason) return { ok: false, reason };
+        const t = (type || "").toLowerCase();
+        if (t.includes("other") && !isMeaningfulSourceTitle(title)) {
+          return { ok: false, reason: "generic 'other' page without a meaningful title" };
+        }
+        return { ok: true };
+      };
+
       if (!dryRun) {
         for (const ev of evidence.filter((e) => e.field !== "source_discovered")) {
           const res = await upsertSource(ev, universityId);
+          if (res.rejected) {
+            rejectedSources.push({ url: ev.sourceUrl, reason: res.rejected });
+            continue;
+          }
           if (res.inserted) newSources.push({ url: ev.sourceUrl, title: ev.sourceTitle });
           if (res.duplicate) duplicatesPrevented += 1;
         }
         for (const d of discovered.slice(0, maxPages)) {
           const dc = ctxFor(d);
-          await upsertSource(
+          const res = await upsertSource(
             { field: "page_discovered", value: d.url, sourceUrl: dc.url, sourceTitle: dc.title, sourceType: dc.sourceType, exactEvidence: "discovered", confidence: 1 },
             universityId
           );
+          if (res.rejected) {
+            rejectedSources.push({ url: d.url, reason: res.rejected });
+            continue;
+          }
+          if (res.inserted) newSources.push({ url: dc.url, title: dc.title });
+          if (res.duplicate) duplicatesPrevented += 1;
         }
       } else {
-        for (const ev of evidence.slice(0, 8)) newSources.push({ url: ev.sourceUrl, title: ev.sourceTitle });
+        const added = new Set<string>();
+        for (const ev of evidence) {
+          if (ev.field === "source_discovered") continue;
+          if (added.has(ev.sourceUrl)) continue;
+          const check = isAcceptableSource(ev.sourceUrl, ev.sourceTitle, ev.sourceType);
+          if (!check.ok) {
+            rejectedSources.push({ url: ev.sourceUrl, reason: check.reason! });
+            continue;
+          }
+          added.add(ev.sourceUrl);
+          newSources.push({ url: ev.sourceUrl, title: ev.sourceTitle });
+        }
+        for (const d of discovered.slice(0, maxPages)) {
+          if (added.has(d.url)) continue;
+          const check = isAcceptableSource(d.url, d.title, ctxFor(d).sourceType);
+          if (!check.ok) {
+            rejectedSources.push({ url: d.url, reason: check.reason! });
+            continue;
+          }
+          added.add(d.url);
+          newSources.push({ url: d.url, title: d.title });
+        }
       }
     }
 
@@ -371,7 +456,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, errors, sourcesReadBack, duplicatesPrevented,
+      newSources, rejectedSources, errors, sourcesReadBack, duplicatesPrevented,
     });
     progress("Audit complete.");
     await logRunFinish(logId, report);
@@ -382,7 +467,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, errors, sourcesReadBack, duplicatesPrevented,
+      newSources, rejectedSources, errors, sourcesReadBack, duplicatesPrevented,
     });
     await logRunFinish(logId, report, String(err?.message || err));
     return report;

@@ -6,7 +6,7 @@
 import { db } from "@/db";
 import { refreshJobs } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import type { AuditReport } from "./types";
+import type { AuditReport, FieldDecision } from "./types";
 
 /** Create a run log row (best-effort). Returns log id or null. */
 export async function logRunStart(universityId: number, scopes: string[]): Promise<number | null> {
@@ -59,14 +59,15 @@ export function buildReport(input: {
   universityId: number;
   universityName: string;
   dryRun: boolean;
-  updatedFields: string[];
-  skippedFields: string[];
-  reviewRequired: string[];
+  updatedFields: FieldDecision[];
+  skippedFields: (string | FieldDecision)[];
+  reviewRequired: (string | FieldDecision)[];
   insertedPrograms: string[];
   updatedRequirements: string[];
   insertedCycles: string[];
   insertedScholarships: string[];
   newSources: { url: string; title: string }[];
+  rejectedSources: { url: string; reason: string }[];
   errors: string[];
   sourcesReadBack: number;
   duplicatesPrevented: number;
@@ -75,14 +76,7 @@ export function buildReport(input: {
     universityId: input.universityId,
     universityName: input.universityName,
     dryRun: input.dryRun,
-    updatedFields: input.updatedFields.map((f) => ({
-      field: f,
-      action: "write",
-      dbValue: null,
-      newValue: null,
-      sourceUrl: "",
-      reason: "",
-    })),
+    updatedFields: input.updatedFields,
     insertedPrograms: input.insertedPrograms,
     updatedRequirements: input.updatedRequirements,
     insertedCycles: input.insertedCycles,
@@ -90,6 +84,7 @@ export function buildReport(input: {
     newSources: input.newSources,
     skippedFields: input.skippedFields,
     reviewRequired: input.reviewRequired,
+    rejectedSources: input.rejectedSources,
     errors: input.errors,
     sourcesReadBack: input.sourcesReadBack,
     duplicatesPrevented: input.duplicatesPrevented,

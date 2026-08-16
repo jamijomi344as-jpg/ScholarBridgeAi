@@ -3,7 +3,6 @@
  * The agent is NOT hardwired to one search service.
  */
 import { isSameDomain } from "./domain";
-import { fetchHomepage } from "./fetch";
 
 export interface SearchResult {
   url: string;
@@ -33,7 +32,14 @@ export class DirectFetchProvider implements SearchProvider {
     if (!domain) return [];
 
     // Bare and www variants are the same site — try both (www-only hosts).
-    const html = await fetchHomepage(domain);
+    const candidates = domain.startsWith("www.")
+      ? [domain, domain.replace(/^www\./, "")]
+      : [domain, `www.${domain}`];
+    let html: string | null = null;
+    for (const d of candidates) {
+      html = await this.fetchPage(`https://${d}/`);
+      if (html) break;
+    }
     if (!html) return [];
 
     const results: SearchResult[] = [];

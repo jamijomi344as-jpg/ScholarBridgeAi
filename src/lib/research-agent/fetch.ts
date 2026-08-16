@@ -4,6 +4,7 @@
  */
 import { AGENT_CONFIG } from "./config";
 import { isSameDomain } from "./domain";
+import { isResearchContentType } from "./urlFilter";
 
 const cache = new Map<string, { html: string; at: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -26,6 +27,12 @@ export async function fetchPageText(url: string): Promise<string | null> {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const contentType = res.headers.get("content-type") || "";
+      // Only research pages are fetched: HTML, PDF, plain text. Fonts,
+      // stylesheets, scripts and images are never treated as pages.
+      if (!isResearchContentType(contentType)) {
+        console.warn(`[research-agent] skipped non-page content-type: ${contentType} (${url})`);
+        return null;
+      }
       let text = "";
       if (contentType.includes("application/pdf")) {
         // PDF text extraction is not implemented in the MVP — mark as unparsed.
@@ -48,15 +55,18 @@ export async function fetchPageText(url: string): Promise<string | null> {
 /**
  * Fetch the homepage of a domain, trying both bare and www variants.
  * Many official sites (e.g. imperial.ac.uk) only serve HTTPS on www — the
- * agent must tolerate both.
+ * agent must tolerate both. Returns the working URL together with the HTML.
  */
-export async function fetchHomepage(domain: string): Promise<string | null> {
+export async function fetchHomepage(
+  domain: string
+): Promise<{ url: string; html: string } | null> {
   const candidates = domain.startsWith("www.")
     ? [domain, domain.replace(/^www\./, "")]
     : [domain, `www.${domain}`];
   for (const d of candidates) {
-    const html = await fetchPageText(`https://${d}/`);
-    if (html) return html;
+    const url = `https://${d}/`;
+    const html = await fetchPageText(url);
+    if (html) return { url, html };
   }
   return null;
 }

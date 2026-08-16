@@ -20,6 +20,10 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { normalizeNameKey, normalizeUrl, toIsoDate } from "./normalize";
 import { canMarkVerified } from "./validate";
+import { compareAndDecide } from "./compare";
+import { rejectSourceReason, isResearchSourceUrl } from "./urlFilter";
+import { isMeaningfulSourceTitle } from "./extract";
+import type { FieldDecision } from "./types";
 import type {
   ExtractedUniversity,
   ExtractedProgram,
@@ -72,21 +76,38 @@ export function bestEvidence(
 /** Source priority: 1 strongest → 8 weakest (spec §5). */
 export function sourcePriority(type: string): number {
   const t = type.toLowerCase();
-  if (t.includes("official_university")) return 1;
-  if (t.includes("official_admissions") || t.includes("admissions")) return 2;
-  if (t.includes("program")) return 3;
-  if (t.includes("tuition") || t.includes("financial")) return 4;
-  if (t.includes("scholarship")) return 5;
+  if (t.includes("official_homepage") || t.includes("official_university")) return 1;
+  if (t.includes("admission") || t.includes("international") || t.includes("undergraduate") || t.includes("portal")) return 2;
+  if (t.includes("program") || t.includes("requirement") || t.includes("deadline") || t.includes("apply")) return 3;
+  if (t.includes("tuition") || t.includes("living") || t.includes("accommodation") || t.includes("financial") || t.includes("cost")) return 4;
+  if (t.includes("scholarship") || t.includes("funding") || t.includes("bursar")) return 5;
   if (t.includes("government")) return 6;
   if (t.includes("approved")) return 7;
   return 8;
 }
 
-/** Upsert a source (dedupe by normalized URL) + link. Returns source id. */
+/**
+ * Upsert a source (dedupe by normalized URL) + link. Returns source id.
+ * Strict source filtering (spec §3D, §21):
+ *  - static assets (fonts/css/js/images/tracking) are REJECTED — never stored;
+ *  - generic "other" pages are stored only when they are real HTML/PDF pages
+ *    with a meaningful title.
+ */
 export async function upsertSource(
   evidence: SourceEvidence,
   universityId: number
-): Promise<{ sourceId: number | null; inserted: boolean; duplicate: boolean }> {
+): Promise<{ sourceId: number | null; inserted: boolean; duplicate: boolean; rejected?: string }> {
+  const rejectReason = rejectSourceReason(evidence.sourceUrl);
+  if (rejectReason) {
+    return { sourceId: null, inserted: false, duplicate: false, rejected: rejectReason };
+  }
+  if (!/^https?:\/\//i.test(evidence.sourceUrl)) {
+    return { sourceId: null, inserted: false, duplicate: false, rejected: "not an HTTP(S) URL" };
+  }
+  const type = (evidence.sourceType || "").toLowerCase();
+  if (type.includes("other") && !isMeaningfulSourceTitle(evidence.sourceTitle || "")) {
+    return { sourceId: null, inserted: false, duplicate: false, rejected: "generic 'other' page without a meaningful title" };
+  }
   try {
     const url = normalizeUrl(evidence.sourceUrl);
     const [existing] = await db.select().from(sources).where(eq(sources.url, url));
@@ -129,61 +150,95 @@ export async function upsertSource(
   }
 }
 
-/** Write university-level fields honoring update rules. */
+/** University-level field specs: evidence field → DB field (+ currency/period columns). */
+export const UNIVERSITY_FIELD_MAP: {
+  evField: string;
+  dbField: string;
+  get: (u: ExtractedUniversity) => any;
+  dbCurrencyField?: string;
+  dbPeriodField?: string;
+}[] = [
+  { evField: "founded_year", dbField: "foundedYear", get: (u) => u.foundedYear },
+  { evField: "university_type", dbField: "universityType", get: (u) => u.universityType },
+  { evField: "address", dbField: "address", get: (u) => u.address },
+  { evField: "acceptance_rate", dbField: "acceptanceRate", get: (u) => u.acceptanceRate },
+  { evField: "annual_tuition", dbField: "annualTuition", get: (u) => u.annualTuition, dbCurrencyField: "tuitionCurrency", dbPeriodField: "tuitionPeriod" },
+  { evField: "annual_living_est", dbField: "annualLivingEst", get: (u) => u.annualLivingEst, dbCurrencyField: "livingCostCurrency", dbPeriodField: "livingCostPeriod" },
+  { evField: "accommodation_cost", dbField: "accommodationCost", get: (u) => u.accommodationCost, dbCurrencyField: "accommodationCostCurrency", dbPeriodField: "accommodationCostPeriod" },
+  { evField: "application_fee", dbField: "applicationFee", get: (u) => u.applicationFee, dbCurrencyField: "applicationFeeCurrency" },
+  { evField: "international_students_count", dbField: "internationalStudentsCount", get: (u) => u.internationalStudentsCount },
+  { evField: "international_students_percentage", dbField: "internationalStudentsPercentage", get: (u) => u.internationalStudentsPercentage },
+];
+
+/** Money fields: when the amount is written, its currency/period travels with it. */
+const MONEY_FIELD_COLUMNS: Record<string, { currency: string; period?: string }> = {
+  annual_tuition: { currency: "tuitionCurrency", period: "tuitionPeriod" },
+  annual_living_est: { currency: "livingCostCurrency", period: "livingCostPeriod" },
+  accommodation_cost: { currency: "accommodationCostCurrency", period: "accommodationCostPeriod" },
+  application_fee: { currency: "applicationFeeCurrency" },
+};
+
+/**
+ * PURE decision step (no DB access) — used by both the real write path and
+ * the dry-run path so dry-run reports EXACTLY what a real run would write.
+ * Returns one FieldDecision per extracted field with old/new values,
+ * currency, source info, confidence and decision reason.
+ */
+export function decideUniversityFields(
+  extracted: ExtractedUniversity,
+  evidence: SourceEvidence[],
+  current: CurrentState
+): FieldDecision[] {
+  if (!current.university) return [];
+  const dbVerified = current.university.verificationStatus === "verified";
+  const decisions: FieldDecision[] = [];
+  for (const spec of UNIVERSITY_FIELD_MAP) {
+    const value = spec.get(extracted);
+    if (value === undefined || value === null) continue;
+    const ev = bestEvidence(evidence, spec.evField);
+    if (!ev) continue;
+    decisions.push(
+      compareAndDecide({
+        field: spec.evField,
+        dbValue: current.university[spec.dbField],
+        dbVerified,
+        newValue: value,
+        sourcePriority: sourcePriority(ev.sourceType),
+        confidence: ev.confidence,
+        sourceYear: ev.sourceYear,
+        dbCurrency: spec.dbCurrencyField ? current.university[spec.dbCurrencyField] : undefined,
+        dbPeriod: spec.dbPeriodField ? current.university[spec.dbPeriodField] : undefined,
+        newCurrency: ev.currency,
+        newPeriod: ev.period,
+        sourceUrl: ev.sourceUrl,
+        sourceTitle: ev.sourceTitle,
+        sourceType: ev.sourceType,
+      })
+    );
+  }
+  return decisions;
+}
+
+/** Write university-level fields honoring update rules (CASE A–E). */
 export async function writeUniversity(
   universityId: number,
   extracted: ExtractedUniversity,
   evidence: SourceEvidence[],
   current: CurrentState
-): Promise<{ updated: string[]; skipped: string[]; review: string[] }> {
-  const updated: string[] = [];
-  const skipped: string[] = [];
-  const review: string[] = [];
-  if (!current.university) return { updated, skipped, review };
-
-  // [evidenceField, drizzleField, getter]
-  const fieldMap: [string, string, (u: ExtractedUniversity) => any][] = [
-    ["founded_year", "foundedYear", (u) => u.foundedYear],
-    ["university_type", "universityType", (u) => u.universityType],
-    ["address", "address", (u) => u.address],
-    ["acceptance_rate", "acceptanceRate", (u) => u.acceptanceRate],
-    ["annual_tuition", "annualTuition", (u) => u.annualTuition],
-    ["tuition_currency", "tuitionCurrency", (u) => u.tuitionCurrency],
-    ["tuition_period", "tuitionPeriod", (u) => u.tuitionPeriod],
-    ["annual_living_est", "annualLivingEst", (u) => u.annualLivingEst],
-    ["living_cost_currency", "livingCostCurrency", (u) => u.livingCostCurrency],
-    ["accommodation_cost", "accommodationCost", (u) => u.accommodationCost],
-    ["accommodation_cost_currency", "accommodationCostCurrency", (u) => u.accommodationCostCurrency],
-    ["application_fee", "applicationFee", (u) => u.applicationFee],
-    ["application_fee_currency", "applicationFeeCurrency", (u) => u.applicationFeeCurrency],
-    ["international_students_count", "internationalStudentsCount", (u) => u.internationalStudentsCount],
-    ["international_students_percentage", "internationalStudentsPercentage", (u) => u.internationalStudentsPercentage],
-  ];
+): Promise<{ updated: FieldDecision[]; skipped: FieldDecision[]; review: FieldDecision[] }> {
+  if (!current.university) return { updated: [], skipped: [], review: [] };
+  const decisions = decideUniversityFields(extracted, evidence, current);
 
   const patch: Record<string, any> = {};
-  for (const [evField, drizzleField, get] of fieldMap) {
-    const value = get(extracted);
-    if (value === undefined || value === null) continue;
-    const ev = bestEvidence(evidence, evField);
-    if (!ev) continue;
-    const dbVerified = (current.university as any).verificationStatus === "verified";
-    const dbValue = (current.university as any)[drizzleField];
-    const priority = sourcePriority(ev.sourceType);
-
-    if (dbValue === null || dbValue === undefined || dbValue === "") {
-      patch[drizzleField] = value;
-      updated.push(evField);
-    } else if (!dbVerified && priority <= 5 && ev.confidence >= 0.7) {
-      patch[drizzleField] = value;
-      updated.push(evField);
-    } else if (dbVerified && priority <= 3 && ev.confidence >= 0.92) {
-      patch[drizzleField] = value;
-      updated.push(evField);
-    } else if (dbVerified) {
-      skipped.push(evField);
-    } else {
-      review.push(evField);
-    }
+  for (const d of decisions) {
+    if (d.action !== "write" && d.action !== "update") continue;
+    const spec = UNIVERSITY_FIELD_MAP.find((s) => s.evField === d.field);
+    if (!spec) continue;
+    patch[spec.dbField] = d.newValue;
+    // Currency/period travel with the amount (only when the evidence has them).
+    const money = MONEY_FIELD_COLUMNS[d.field];
+    if (money && d.currency) patch[money.currency] = d.currency;
+    if (money?.period && d.period) patch[money.period] = d.period;
   }
 
   if (Object.keys(patch).length > 0) {
@@ -193,7 +248,11 @@ export async function writeUniversity(
       console.error("[research-agent] writeUniversity failed:", err);
     }
   }
-  return { updated, skipped, review };
+  return {
+    updated: decisions.filter((d) => d.action === "write" || d.action === "update"),
+    skipped: decisions.filter((d) => d.action === "skip"),
+    review: decisions.filter((d) => d.action === "review"),
+  };
 }
 
 /** Upsert a program (dedupe: university_id + normalized name). */

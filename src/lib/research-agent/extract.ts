@@ -39,7 +39,8 @@ export function extractMoney(
   text: string,
   ctx: ExtractCtx,
   field: string,
-  periodDefault = "year"
+  periodDefault = "year",
+  hint?: RegExp
 ): SourceEvidence | null {
   const patterns: { re: RegExp; cur: string }[] = [
     { re: /\$\s?([\d,]+(?:\.\d{1,2})?)/, cur: "USD" },
@@ -55,11 +56,19 @@ export function extractMoney(
     { re: /(?:USD|US\$)\s?([\d,]+(?:\.\d{1,2})?)/, cur: "USD" },
     { re: /(?:GBP)\s?([\d,]+(?:\.\d{1,2})?)/, cur: "GBP" },
   ];
-  // Context window: look for the field keyword near a money amount.
+  // Context window: look for money keywords near an amount. When a `hint`
+  // regex is given (e.g. /tuition|fee/), the line must ALSO match it — this
+  // keeps a tuition page's amount from becoming "living costs" evidence
+  // (evidence quality, spec §3E).
   const lines = text.split("\n");
   for (const line of lines) {
     const low = line.toLowerCase();
-    if (!low.includes("tuition") && !low.includes("fee") && !low.includes("cost") && !low.includes("living") && !low.includes("accommodation")) continue;
+    if (
+      !low.includes("tuition") && !low.includes("fee") && !low.includes("cost") &&
+      !low.includes("living") && !low.includes("accommodation") &&
+      !low.includes("scholarship") && !low.includes("award") && !low.includes("grant")
+    ) continue;
+    if (hint && !hint.test(low)) continue;
     for (const p of patterns) {
       const m = p.re.exec(line);
       if (m) {
@@ -143,18 +152,45 @@ export function extractDeadline(text: string, ctx: ExtractCtx): SourceEvidence |
 }
 
 /** Classify a link by URL+label patterns. */
+/**
+ * Classify a same-domain page into a research-source category.
+ * Categories (spec §3D, §23): homepage, admissions, international, program,
+ * tuition, living_costs, scholarship, deadline, requirements.
+ * Pages that match nothing are "other" — the caller decides whether they are
+ * still useful official HTML/PDF sources.
+ */
 export function classifyLink(url: string, label: string): string {
   const l = `${url} ${label}`.toLowerCase();
-  if (/apply|admission|portal/.test(l) && /apply|portal/.test(l)) return "application_portal";
-  if (/international/.test(l)) return "international_admissions";
-  if (/undergraduate|first-year|firstyear/.test(l)) return "undergraduate_admissions";
+  try {
+    const u = new URL(url);
+    if (u.pathname === "/" || u.pathname === "") return "homepage";
+  } catch {
+    // fall through to pattern matching
+  }
+  if (/international/.test(l)) return "international";
+  if (/undergraduate|first-year|firstyear/.test(l)) return "admissions";
   if (/admission/.test(l)) return "admissions";
-  if (/tuition|fees|cost|financial/.test(l)) return "tuition";
-  if (/scholarship|financial.aid|funding/.test(l)) return "scholarships";
-  if (/program|degree|major|course/.test(l)) return "programs";
-  if (/accommodation|housing|living/.test(l)) return "accommodation";
-  if (/requirement|english|ielts|toefl/.test(l)) return "requirements";
+  if (/apply|application|deadline|key.dates|important.dates|closing.dates|calendar|entry.requirements.dates/.test(l)) return "deadline";
+  // Scholarship BEFORE generic tuition/fees — "fees and funding" pages about
+  // scholarships must be scholarship pages, not tuition pages.
+  if (/scholarship|bursar/.test(l) && /scholarship|funding|bursar|financial.aid/.test(l)) return "scholarship";
+  // Living costs BEFORE tuition — "living costs" contains "cost" and must
+  // not be misread as a tuition page.
+  if (/living|accommodation|housing/.test(l)) return "living_costs";
+  if (/tuition|fees?|cost|financial/.test(l)) return "tuition";
+  if (/requirement|english|ielts|toefl|entry.requirement/.test(l)) return "requirements";
+  if (/program|degree|major|courses?|study/.test(l)) return "program";
   return "other";
+}
+
+/** True when a "other"-classified page is still a useful research source
+ *  (meaningful human title, not a bare asset or tracking endpoint). */
+export function isMeaningfulSourceTitle(title: string): boolean {
+  const t = (title || "").trim();
+  if (!t || t.length < 6) return false;
+  if (/^(home|index|untitled|document|download|404|error|page)$/i.test(t)) return false;
+  if (/^\d+$/.test(t)) return false;
+  return true;
 }
 
 /** Validate a currency against the allowed set (spec §7). */

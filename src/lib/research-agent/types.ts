@@ -164,6 +164,13 @@ export interface FieldDecision {
   newValue: unknown;
   sourceUrl: string;
   reason: string;
+  /** Original currency of newValue (money fields only). */
+  currency?: string;
+  /** Original period of newValue (money fields only, e.g. "year"). */
+  period?: string;
+  sourceTitle?: string;
+  sourceType?: string;
+  confidence?: number;
 }
 
 export interface AuditReport {
@@ -176,8 +183,11 @@ export interface AuditReport {
   insertedCycles: string[];
   insertedScholarships: string[];
   newSources: { url: string; title: string }[];
-  skippedFields: string[];
-  reviewRequired: string[];
+  /** Fields kept as-is (identical value / weaker source). Strings = reasons. */
+  skippedFields: (string | FieldDecision)[];
+  reviewRequired: (string | FieldDecision)[];
+  /** URLs rejected during discovery/persistence (fonts, css, tracking...). */
+  rejectedSources: { url: string; reason: string }[];
   errors: string[];
   sourcesReadBack: number;
   duplicatesPrevented: number;
