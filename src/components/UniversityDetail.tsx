@@ -142,7 +142,8 @@ function fmtValue(v: string | number | null | undefined, suffix = ""): string {
 }
 
 /** Read a requirement value from the universityRequirements payload.
- *  Values are either { single, range, values } summaries or null. */
+ *  Values are either { single, range, values } summaries or null.
+ *  Falls back gracefully for any shape. */
 function req(
   ur: Record<string, any> | null,
   key: string,
@@ -150,9 +151,20 @@ function req(
 ): string {
   const v = ur?.[key];
   if (!v) return "Not specified";
+  if (typeof v === "number") return fmt(v);
   if (typeof v.single === "number") return fmt(v.single);
-  if (typeof v.range === "string") return `${fmt(Number(v.values?.[0] ?? v.min))}–${fmt(Number(v.values?.[v.values.length - 1] ?? v.max))}`;
-  if (Array.isArray(v) && v.length > 0) return fmt(Number(v[0]));
+  if (Array.isArray(v.values) && v.values.length > 0) {
+    const nums = v.values.filter((x: any) => typeof x === "number");
+    if (nums.length === 0) return "Not specified";
+    if (nums.length === 1) return fmt(nums[0]);
+    const sorted = [...nums].sort((a: number, b: number) => a - b);
+    return `${fmt(sorted[0])}–${fmt(sorted[sorted.length - 1])}`;
+  }
+  if (typeof v.range === "string") {
+    const nums = (v.values ?? [v.min, v.max]).filter((x: any) => typeof x === "number");
+    if (nums.length === 0) return "Not specified";
+    return `${fmt(nums[0])}–${fmt(nums[nums.length - 1])}`;
+  }
   return "Not specified";
 }
 
@@ -399,6 +411,12 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
                           ? `$${c.applicationFee.toLocaleString()}`
                           : `${c.applicationFee} ${c.applicationFeeCurrency}`
                         : "Not specified"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Timezone</span>
+                    <strong className="text-slate-800">
+                      {c.deadlineTimezone || "Not specified"}
                     </strong>
                   </div>
                   <div className="flex items-end justify-end">

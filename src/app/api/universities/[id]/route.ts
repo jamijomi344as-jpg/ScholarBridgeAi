@@ -11,6 +11,57 @@ import {
 import { eq, asc, inArray } from "drizzle-orm";
 
 /**
+ * GENERIC structured parser for `other_requirements` free-text.
+ *
+ * Some databases store requirement values (IELTS, TOEFL, Duolingo, PTE,
+ * Cambridge English, SAT/ACT required) inside a single `other_requirements`
+ * text column instead of dedicated numeric columns. This parser extracts them
+ * with explicit patterns ONLY when the text explicitly encodes a value.
+ *
+ * It is fully generic — no university names, no hardcoded rules.
+ * Values are only used as FALLBACK when the dedicated column is empty.
+ */
+function parseOtherRequirements(texts: string[]) {
+  const joined = texts.join("\n");
+  const out: {
+    ielts?: number;
+    toefl?: number;
+    duolingo?: number;
+    pte?: number;
+    cambridgeEnglish?: number;
+    sat?: number;
+    act?: number;
+    satRequired?: boolean;
+    actRequired?: boolean;
+  } = {};
+
+  const num = (re: RegExp) => {
+    const m = joined.match(re);
+    return m ? parseFloat(m[1]) : undefined;
+  };
+
+  out.ielts = num(/IELTS\s*(?:score)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  out.toefl = num(/TOEFL\s*(?:iBT)?\s*[:=]?\s*(\d+)/i);
+  out.duolingo = num(/Duolingo(?:\s+DET)?\s*[:=]?\s*(\d+)/i);
+  out.pte = num(/PTE(?:\s+Academic)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  out.cambridgeEnglish = num(/Cambridge(?:\s+English)?\s*[:=]?\s*(\d+)/i);
+  out.sat = num(/\bSAT\s*[:=]?\s*(\d{3,4})\b/i);
+  out.act = num(/\bACT\s*[:=]?\s*(\d{1,2})\b/i);
+
+  // "SAT or ACT required" / "SAT/ACT required" → both required, no minimum published.
+  if (/\bSAT\b[^\n]{0,30}\bACT\b[^\n]{0,20}required/i.test(joined) ||
+      /\bACT\b[^\n]{0,30}\bSAT\b[^\n]{0,20}required/i.test(joined)) {
+    out.satRequired = true;
+    out.actRequired = true;
+  } else {
+    if (/\bSAT\b[^\n]{0,25}required/i.test(joined)) out.satRequired = true;
+    if (/\bACT\b[^\n]{0,25}required/i.test(joined)) out.actRequired = true;
+  }
+
+  return out;
+}
+
+/**
  * University detail API.
  *
  * Works with the EXISTING database layout:
@@ -188,20 +239,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       };
     };
 
+    // Generic fallback: extract values that may be stored only inside the
+    // other_requirements text (never overrides a real column value).
+    const parsedOther = parseOtherRequirements((uniReqs.other?.texts ?? []).filter((t): t is string => t != null));
+
     const universityRequirements = {
-      ielts: summarize("ielts", uni.minIelts),
-      toefl: summarize("toefl", null),
-      duolingo: summarize("duolingo", null),
+      ielts: summarize("ielts", uni.minIelts) ?? (parsedOther.ielts != null ? { values: [parsedOther.ielts], min: parsedOther.ielts, max: parsedOther.ielts, range: String(parsedOther.ielts), single: parsedOther.ielts } : null),
+      toefl: summarize("toefl", null) ?? (parsedOther.toefl != null ? { values: [parsedOther.toefl], min: parsedOther.toefl, max: parsedOther.toefl, range: String(parsedOther.toefl), single: parsedOther.toefl } : null),
+      duolingo: summarize("duolingo", null) ?? (parsedOther.duolingo != null ? { values: [parsedOther.duolingo], min: parsedOther.duolingo, max: parsedOther.duolingo, range: String(parsedOther.duolingo), single: parsedOther.duolingo } : null),
       gpa: summarize("gpa", uni.minGpa),
-      sat: summarize("sat", uni.minSat),
-      act: summarize("act", null),
-      pte: summarize("pte", null),
-      cambridgeEnglish: summarize("cambridgeenglish", null),
+      sat: summarize("sat", uni.minSat) ?? (parsedOther.sat != null ? { values: [parsedOther.sat], min: parsedOther.sat, max: parsedOther.sat, range: String(parsedOther.sat), single: parsedOther.sat } : null),
+      act: summarize("act", null) ?? (parsedOther.act != null ? { values: [parsedOther.act], min: parsedOther.act, max: parsedOther.act, range: String(parsedOther.act), single: parsedOther.act } : null),
+      pte: summarize("pte", null) ?? (parsedOther.pte != null ? { values: [parsedOther.pte], min: parsedOther.pte, max: parsedOther.pte, range: String(parsedOther.pte), single: parsedOther.pte } : null),
+      cambridgeEnglish: summarize("cambridgeenglish", null) ?? (parsedOther.cambridgeEnglish != null ? { values: [parsedOther.cambridgeEnglish], min: parsedOther.cambridgeEnglish, max: parsedOther.cambridgeEnglish, range: String(parsedOther.cambridgeEnglish), single: parsedOther.cambridgeEnglish } : null),
       // Requirement row exists (even without a published minimum):
-      satRequired: (uniReqs.sat?.values.length ?? 0) > 0 || uni.minSat != null,
-      actRequired: (uniReqs.act?.values.length ?? 0) > 0,
-      satMinimumPublished: (uniReqs.sat?.values.length ?? 0) > 0 || uni.minSat != null,
-      actMinimumPublished: (uniReqs.act?.values.length ?? 0) > 0,
+      satRequired: (uniReqs.sat?.values.length ?? 0) > 0 || uni.minSat != null || parsedOther.satRequired === true || parsedOther.sat != null,
+      actRequired: (uniReqs.act?.values.length ?? 0) > 0 || parsedOther.actRequired === true || parsedOther.act != null,
+      satMinimumPublished: (uniReqs.sat?.values.length ?? 0) > 0 || uni.minSat != null || parsedOther.sat != null,
+      actMinimumPublished: (uniReqs.act?.values.length ?? 0) > 0 || parsedOther.act != null,
       portfolioRequired: flagAgg.portfolio,
       interviewRequired: flagAgg.interview,
       recommendationRequired: flagAgg.recommendation,
