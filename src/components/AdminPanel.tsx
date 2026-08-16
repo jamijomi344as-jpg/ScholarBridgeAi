@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import dynamic from "next/dynamic";
 import { ShieldCheck, Building2, Video, Award, Gift, History, Settings2, RefreshCw, BadgeCheck, Headset, Bot } from "lucide-react";
 import { StudentProfile } from "./Navbar";
 import { UniversitiesManager } from "./admin/UniversitiesManager";
@@ -12,7 +13,24 @@ import { ConfigManager } from "./admin/ConfigManager";
 import { RefreshCenter } from "./admin/RefreshCenter";
 import { VerificationManager } from "./admin/VerificationManager";
 import { ConsultingManager } from "./admin/ConsultingManager";
-import { ResearchAgent } from "./admin/ResearchAgent";
+import { ErrorBoundary } from "./ErrorBoundary";
+
+/**
+ * Research Agent is lazy-loaded so that any issue in its client bundle can
+ * never crash the Admin Panel. It also never auto-runs on mount — the user
+ * must explicitly click RUN.
+ */
+const ResearchAgent = dynamic(
+  () => import("./admin/ResearchAgent").then((m) => m.ResearchAgent),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-xs font-semibold text-slate-400">
+        Loading Research Agent…
+      </div>
+    ),
+  }
+);
 
 interface AdminPanelProps {
   activeProfile: StudentProfile | null;
@@ -69,16 +87,49 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
         ))}
       </div>
 
-      {tab === "universities" && <UniversitiesManager adminProfileId={activeProfile.id} />}
-      {tab === "courses" && <CoursesManager adminProfileId={activeProfile.id} />}
-      {tab === "scholarships" && <ScholarshipsManager adminProfileId={activeProfile.id} />}
-      {tab === "premium" && <PremiumManager adminProfileId={activeProfile.id} />}
-      {tab === "audit" && <AuditLogViewer adminProfileId={activeProfile.id} />}
-      {tab === "refresh" && <RefreshCenter adminProfileId={activeProfile.id} />}
-      {tab === "config" && <ConfigManager adminProfileId={activeProfile.id} />}
-      {tab === "verify" && <VerificationManager adminProfileId={activeProfile.id} />}
-      {tab === "consulting" && <ConsultingManager adminProfileId={activeProfile.id} />}
-      {tab === "research" && <ResearchAgent adminProfileId={activeProfile.id} />}
+      {/* Each tab is wrapped in an ErrorBoundary so a failing tab can never
+          crash the whole Admin Panel. */}
+      {tab === "universities" && (
+        <ErrorBoundary><UniversitiesManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "courses" && (
+        <ErrorBoundary><CoursesManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "scholarships" && (
+        <ErrorBoundary><ScholarshipsManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "premium" && (
+        <ErrorBoundary><PremiumManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "audit" && (
+        <ErrorBoundary><AuditLogViewer adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "refresh" && (
+        <ErrorBoundary><RefreshCenter adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "config" && (
+        <ErrorBoundary><ConfigManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "verify" && (
+        <ErrorBoundary><VerificationManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "consulting" && (
+        <ErrorBoundary><ConsultingManager adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
+      {tab === "research" && (
+        <ErrorBoundary
+          fallback={
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <p className="text-xs font-bold text-amber-800">Research Agent unavailable</p>
+              <p className="text-[11px] text-amber-600 mt-1">
+                The research agent failed to load. Other admin sections are unaffected.
+              </p>
+            </div>
+          }
+        >
+          <ResearchAgent adminProfileId={activeProfile.id} />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
