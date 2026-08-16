@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, doublePrecision, boolean, timestamp, date, jsonb, AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, doublePrecision, boolean, timestamp, date, numeric, AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const studentProfiles = pgTable("student_profiles", {
   id: serial("id").primaryKey(),
@@ -38,7 +38,6 @@ export const studentProfiles = pgTable("student_profiles", {
 export const universities = pgTable("universities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  shortName: text("short_name"),
   country: text("country").notNull(),
   city: text("city").notNull(),
   flagEmoji: text("flag_emoji").notNull().default("🌐"),
@@ -48,29 +47,12 @@ export const universities = pgTable("universities", {
   // --- Financial (NULL = not verified, spec §14) ---
   annualTuitionUsd: integer("annual_tuition_usd"),
   annualLivingEstUsd: integer("annual_living_est_usd"),
-  tuitionCurrency: text("tuition_currency").notNull().default("USD"),
-  applicationFee: integer("application_fee"),
-  applicationFeeCurrency: text("application_fee_currency").notNull().default("USD"),
   // --- Academic requirements (NULL = not officially specified) ---
   minGpa: doublePrecision("min_gpa"),
   minIelts: doublePrecision("min_ielts"),
-  minToefl: integer("min_toefl"),
-  minDuolingo: integer("min_duolingo"),
   minSat: integer("min_sat"),
-  minAct: integer("min_act"),
   acceptanceRate: doublePrecision("acceptance_rate"),
-  // --- Institutional info ---
-  foundedYear: integer("founded_year"),
-  universityType: text("university_type"), // Public | Private
-  internationalStudentsCount: integer("international_students_count"),
-  internationalStudentsPct: doublePrecision("international_students_pct"),
-  isEnglishTaught: boolean("is_english_taught").notNull().default(false),
   postStudyWorkVisaYears: doublePrecision("post_study_work_visa_years"),
-  postStudyVisaNote: text("post_study_visa_note"),
-  // --- Links ---
-  undergraduateUrl: text("undergraduate_url"),
-  internationalUrl: text("international_url"),
-  applicationPlatform: text("application_platform"),
   description: text("description").notNull(),
   highlights: text("highlights").notNull().default("[]"),
   websiteUrl: text("website_url").notNull(),
@@ -85,7 +67,6 @@ export const universities = pgTable("universities", {
 
 export const scholarships = pgTable("scholarships", {
   id: serial("id").primaryKey(),
-  universityId: integer("university_id").references((): AnyPgColumn => universities.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   provider: text("provider").notNull(),
   country: text("country").notNull(),
@@ -547,107 +528,90 @@ export const consultingRequests = pgTable("consulting_requests", {
 // ---------------------------------------------------------------------------
 
 /** Programs offered at a university. */
-export const universityPrograms = pgTable("university_programs", {
+/**
+ * Programs — mapped to the EXISTING database table `programs`
+ * (the database is the source of truth; no rename, no view).
+ */
+export const universityPrograms = pgTable("programs", {
   id: serial("id").primaryKey(),
   universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
   field: text("field"), // Computer Science, AI, Business...
-  degree: text("degree"), // Bachelor's | Master's | PhD
-  durationYears: doublePrecision("duration_years"),
+  degree: text("degree_level"), // DB column name (Bachelor's | Master's | PhD)
+  durationYears: numeric("duration").$type<number>(), // DB column `duration numeric`
   durationUnit: text("duration_unit").notNull().default("years"),
   studyMode: text("study_mode"), // full-time | part-time | online
   language: text("language"),
-  tuitionAmount: integer("tuition_amount"),
+  tuitionAmount: numeric("annual_tuition").$type<number>(), // DB column `annual_tuition numeric`
   tuitionCurrency: text("tuition_currency").notNull().default("USD"),
   tuitionPeriod: text("tuition_period").notNull().default("year"),
   description: text("description"),
-  applicationDeadline: date("application_deadline"),
-  minIelts: doublePrecision("min_ielts"),
-  minSat: integer("min_sat"),
-  programUrl: text("program_url"),
+  programUrl: text("official_url"), // DB column name
   applicationUrl: text("application_url"),
-  isActive: boolean("is_active").notNull().default(true),
   isVerified: boolean("is_verified").notNull().default(false),
-  verificationStatus: text("verification_status").notNull().default("unverified"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 /** Program-level academic requirements. */
+/**
+ * Program requirements — mapped to the EXISTING wide-column layout of the
+ * database (`min_ielts`, `min_gpa`, ...). The API normalizes these into
+ * requirementType rows for the frontend. No verification flags are invented:
+ * `verification_status` and `source_url` come straight from the DB.
+ */
 export const programRequirements = pgTable("program_requirements", {
   id: serial("id").primaryKey(),
   programId: integer("program_id").references(() => universityPrograms.id, { onDelete: "cascade" }).notNull(),
-  requirementType: text("requirement_type").notNull(), // gpa | ielts | toefl | duolingo | sat | act | ib | alevel | ap
-  minimumValue: doublePrecision("minimum_value"),
-  valueText: text("value_text"),
+  minIelts: doublePrecision("min_ielts"),
+  minToefl: doublePrecision("min_toefl"),
+  minDet: doublePrecision("min_det"),
+  minSat: integer("min_sat"),
+  minAct: integer("min_act"),
+  minGpa: doublePrecision("min_gpa"),
+  ibRequirement: text("ib_requirement"),
+  aLevelRequirement: text("a_level_requirement"),
+  apRequirement: text("ap_requirement"),
   subjectRequirements: text("subject_requirements"),
   portfolioRequired: boolean("portfolio_required").notNull().default(false),
   interviewRequired: boolean("interview_required").notNull().default(false),
   recommendationRequired: boolean("recommendation_required").notNull().default(false),
   personalStatementRequired: boolean("personal_statement_required").notNull().default(false),
   otherRequirements: text("other_requirements"),
-  notes: text("notes"),
-  isVerified: boolean("is_verified").notNull().default(false),
+  sourceUrl: text("source_url"),
+  lastVerifiedAt: timestamp("last_verified_at"),
   verificationStatus: text("verification_status").notNull().default("unverified"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 /** Application cycles / deadlines (multiple rounds, exact or estimated). */
+/**
+ * Application cycles — mapped to the EXISTING database layout.
+ * The DB has no `cycle_year`; the API derives a display year from
+ * `academic_year` ("2027-2028" -> 2027) or leaves it null — never guessed.
+ */
 export const applicationCycles = pgTable("application_cycles", {
   id: serial("id").primaryKey(),
   universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
-  cycleYear: integer("cycle_year").notNull(),
   academicYear: text("academic_year"), // e.g. "2027-2028"
   intake: text("intake"), // Fall | Spring | Summer | Winter
   applicationType: text("application_type"), // Early Action | Early Decision | Regular Decision | International Undergraduate | Transfer | Direct Application
   openingDate: date("opening_date"),
   deadline: date("deadline"),
   deadlineTimezone: text("deadline_timezone"),
-  deadlineType: text("deadline_type").notNull().default("exact"), // exact | early | regular | late | rolling
-  applicationFee: integer("application_fee"),
+  applicationFee: numeric("application_fee").$type<number>(),
   applicationFeeCurrency: text("application_fee_currency").notNull().default("USD"),
   applicationUrl: text("application_url"),
-  officialSourceId: integer("official_source_id").references((): AnyPgColumn => sources.id, { onDelete: "set null" }),
-  isEstimated: boolean("is_estimated").notNull().default(false),
-  isVerified: boolean("is_verified").notNull().default(false),
-  isActive: boolean("is_active").notNull().default(true),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  sourceUrl: text("source_url"),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  verificationStatus: text("verification_status").notNull().default("unverified"),
 });
 
 /** Verified sources for a university (spec §13). */
+/** University→source links — mapped to existing DB layout (id, university_id, source_id, source_type). */
 export const universitySources = pgTable("university_sources", {
   id: serial("id").primaryKey(),
   universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
   sourceId: integer("source_id").references((): AnyPgColumn => sources.id, { onDelete: "set null" }),
-  title: text("title").notNull(),
-  url: text("url").notNull(),
-  sourceType: text("source_type").notNull().default("official_website"), // official_website | admissions | international_admissions | undergraduate_admissions | tuition | accommodation | international_students | ranking | visa | other
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-/** Campus information. */
-export const campuses = pgTable("campuses", {
-  id: serial("id").primaryKey(),
-  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
-  name: text("name").notNull().default("Main Campus"),
-  address: text("address"),
-  city: text("city"),
-  country: text("country"),
-  mapUrl: text("map_url"),
-  nearbyAirport: text("nearby_airport"),
-  accommodationInfo: text("accommodation_info"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-/** Real university campus images (spec §10 — no fake images). */
-export const universityImages = pgTable("university_images", {
-  id: serial("id").primaryKey(),
-  universityId: integer("university_id").references(() => universities.id, { onDelete: "cascade" }).notNull(),
-  imageUrl: text("image_url").notNull(),
-  caption: text("caption"),
-  isPrimary: boolean("is_primary").notNull().default(false),
-  sourceUrl: text("source_url"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  sourceType: text("source_type").notNull().default("official_website"),
 });
 
 // ---------------------------------------------------------------------------

@@ -23,7 +23,6 @@ import {
 interface UniversityDetailData {
   id: number;
   name: string;
-  shortName: string | null;
   country: string;
   city: string;
   flagEmoji: string;
@@ -232,11 +231,6 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{uni.name}</h1>
-                {uni.shortName && (
-                  <span className="rounded-full bg-white/15 border border-white/20 px-2.5 py-0.5 text-[10px] font-bold">
-                    {uni.shortName}
-                  </span>
-                )}
               </div>
               <p className="text-sm text-indigo-200 mt-1 flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5" />

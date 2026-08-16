@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     if (search) {
       allUnis = allUnis.filter(u =>
         u.name.toLowerCase().includes(search) ||
-        (u.shortName || "").toLowerCase().includes(search) ||
+
         u.programMajor.toLowerCase().includes(search) ||
         u.city.toLowerCase().includes(search) ||
         u.country.toLowerCase().includes(search)
@@ -61,17 +61,9 @@ export async function GET(req: Request) {
       allUnis = allUnis.filter(u => u.annualTuitionUsd != null && u.annualTuitionUsd <= maxT);
     }
 
-    if (uniType && uniType !== "All") {
-      allUnis = allUnis.filter(u => u.universityType === uniType);
-    }
-
     if (ieltsFilter && !isNaN(Number(ieltsFilter))) {
       const minI = Number(ieltsFilter);
       allUnis = allUnis.filter(u => u.minIelts != null && u.minIelts <= minI);
-    }
-
-    if (englishOnly) {
-      allUnis = allUnis.filter(u => u.isEnglishTaught === true);
     }
 
     if (minRank) allUnis = allUnis.filter(u => u.worldRanking >= minRank);

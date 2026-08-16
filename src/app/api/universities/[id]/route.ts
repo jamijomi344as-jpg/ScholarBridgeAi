@@ -7,16 +7,20 @@ import {
   applicationCycles,
   universitySources,
   sources,
-  campuses,
-  universityImages,
-  scholarships,
 } from "@/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, inArray } from "drizzle-orm";
 
 /**
- * University detail API (spec §2-§14).
- * Returns the university plus all related verified data.
+ * University detail API.
+ *
+ * Works with the EXISTING database layout:
+ *  - programs (NOT university_programs)
+ *  - program_requirements with wide columns (min_ielts, min_gpa, ...)
+ *  - application_cycles WITHOUT cycle_year (year derived from academic_year)
+ *  - university_sources with source links; source details joined from `sources`
+ *
  * Missing data stays null — the UI shows "Not available" / "Not specified".
+ * No verification flags are invented: they come from the DB columns only.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -28,70 +32,159 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: "University not found" }, { status: 404 });
     }
 
-    // Programs + their requirements.
+    // ---------- Programs (existing `programs` table) ----------
     const programs = await db
       .select()
       .from(universityPrograms)
       .where(eq(universityPrograms.universityId, uniId))
       .orderBy(asc(universityPrograms.name));
 
-    const programReqs: Record<number, typeof programRequirements.$inferSelect[]> = {};
+    // ---------- Program requirements (wide columns → normalized) ----------
+    const programsWithReqs = [];
     for (const p of programs) {
-      const reqs = await db
+      const reqRows = await db
         .select()
         .from(programRequirements)
         .where(eq(programRequirements.programId, p.id));
-      programReqs[p.id] = reqs;
+
+      const reqs: { requirementType: string; minimumValue: number | null; valueText: string | null }[] = [];
+      let programMinIelts: number | null = null;
+      let programMinSat: number | null = null;
+      for (const r of reqRows) {
+        if (r.minIelts != null) {
+          reqs.push({ requirementType: "ielts", minimumValue: r.minIelts, valueText: null });
+          if (programMinIelts == null) programMinIelts = r.minIelts;
+        }
+        if (r.minToefl != null) reqs.push({ requirementType: "toefl", minimumValue: r.minToefl, valueText: null });
+        if (r.minDet != null) reqs.push({ requirementType: "duolingo", minimumValue: r.minDet, valueText: null });
+        if (r.minSat != null) {
+          reqs.push({ requirementType: "sat", minimumValue: r.minSat, valueText: null });
+          if (programMinSat == null) programMinSat = r.minSat;
+        }
+        if (r.minAct != null) reqs.push({ requirementType: "act", minimumValue: r.minAct, valueText: null });
+        if (r.minGpa != null) reqs.push({ requirementType: "gpa", minimumValue: r.minGpa, valueText: null });
+        if (r.ibRequirement) reqs.push({ requirementType: "ib", minimumValue: null, valueText: r.ibRequirement });
+        if (r.aLevelRequirement) reqs.push({ requirementType: "alevel", minimumValue: null, valueText: r.aLevelRequirement });
+        if (r.apRequirement) reqs.push({ requirementType: "ap", minimumValue: null, valueText: r.apRequirement });
+      }
+
+      programsWithReqs.push({
+        id: p.id,
+        name: p.name,
+        field: p.field,
+        degree: p.degree,
+        durationYears: p.durationYears != null ? Number(p.durationYears) : null,
+        durationUnit: p.durationUnit ?? "years",
+        studyMode: p.studyMode,
+        language: p.language,
+        tuitionAmount: p.tuitionAmount != null ? Number(p.tuitionAmount) : null,
+        tuitionCurrency: p.tuitionCurrency,
+        tuitionPeriod: p.tuitionPeriod,
+        description: p.description,
+        applicationDeadline: null,
+        minIelts: programMinIelts,
+        minSat: programMinSat,
+        programUrl: p.programUrl,
+        applicationUrl: p.applicationUrl,
+        isVerified: p.isVerified,
+        requirements: reqs,
+      });
     }
 
-    // Application cycles (spec §2 — multiple rows per university allowed).
-    const cycles = await db
+    // ---------- Application cycles (no cycle_year in DB — derive from academic_year) ----------
+    const cycleRows = await db
       .select()
       .from(applicationCycles)
       .where(eq(applicationCycles.universityId, uniId))
-      .orderBy(asc(applicationCycles.cycleYear));
+      .orderBy(asc(applicationCycles.id));
 
-    // Sources: university_sources + linked sources table.
-    const uniSourceRows = await db
-      .select()
-      .from(universitySources)
-      .where(eq(universitySources.universityId, uniId));
-    const sourceIds = uniSourceRows.map((r) => r.sourceId).filter((x): x is number => x != null);
-    const sourceMap = new Map<number, typeof sources.$inferSelect>();
-    if (sourceIds.length) {
-      const srcRows = await db.select().from(sources);
-      srcRows.forEach((s) => sourceMap.set(s.id, s));
+    const cycles = cycleRows.map((c) => {
+      let year: number | null = null;
+      const m = /^(\d{4})/.exec(c.academicYear || "");
+      if (m) year = parseInt(m[1], 10);
+      return {
+        id: c.id,
+        cycleYear: year,
+        academicYear: c.academicYear,
+        intake: c.intake,
+        applicationType: c.applicationType,
+        openingDate: c.openingDate,
+        deadline: c.deadline,
+        deadlineTimezone: c.deadlineTimezone,
+        applicationFee: c.applicationFee != null ? Number(c.applicationFee) : null,
+        applicationFeeCurrency: c.applicationFeeCurrency,
+        applicationUrl: c.applicationUrl,
+        isVerified: c.verificationStatus === "verified",
+        isEstimated: false,
+      };
+    });
+
+    // ---------- Sources (resilient: unknown table shape must not crash the page) ----------
+    let uniSources: {
+      id: number;
+      universityId: number;
+      sourceId: number | null;
+      sourceType: string;
+      source: { url: string; title: string; isOfficial: boolean; isVerified: boolean } | null;
+    }[] = [];
+    try {
+      const linkRows = await db
+        .select({
+          id: universitySources.id,
+          universityId: universitySources.universityId,
+          sourceId: universitySources.sourceId,
+          sourceType: universitySources.sourceType,
+        })
+        .from(universitySources)
+        .where(eq(universitySources.universityId, uniId));
+
+      const srcIds = [...new Set(linkRows.map((r) => r.sourceId).filter((x): x is number => x != null))];
+      const srcMap = new Map<number, { url: string; title: string; isOfficial: boolean; isVerified: boolean }>();
+      if (srcIds.length) {
+        try {
+          const rows = await db
+            .select({
+              id: sources.id,
+              url: sources.url,
+              title: sources.title,
+              isOfficial: sources.isOfficial,
+              isVerified: sources.isVerified,
+            })
+            .from(sources)
+            .where(inArray(sources.id, srcIds));
+          rows.forEach((r) =>
+            srcMap.set(r.id, { url: r.url, title: r.title, isOfficial: r.isOfficial, isVerified: r.isVerified })
+          );
+        } catch {
+          // sources table shape differs — sources are simply not shown.
+        }
+      }
+
+      uniSources = linkRows.map((r) => ({
+        id: r.id,
+        universityId: r.universityId,
+        sourceId: r.sourceId,
+        sourceType: r.sourceType,
+        source: r.sourceId != null ? srcMap.get(r.sourceId) ?? null : null,
+      }));
+    } catch {
+      // university_sources table shape differs — sources are simply not shown.
     }
-    const uniSources = uniSourceRows.map((r) => ({
-      ...r,
-      source: r.sourceId != null ? sourceMap.get(r.sourceId) ?? null : null,
-    }));
 
-    // Scholarships linked to this university (spec §8).
-    const uniScholarships = await db
-      .select()
-      .from(scholarships)
-      .where(eq(scholarships.universityId, uniId))
-      .orderBy(asc(scholarships.title));
-
-    const campusRows = await db
-      .select()
-      .from(campuses)
-      .where(eq(campuses.universityId, uniId));
-
-    const images = await db
-      .select()
-      .from(universityImages)
-      .where(eq(universityImages.universityId, uniId));
+    // ---------- Scholarships linked to this university ----------
+    // NOTE: the existing `scholarships` table has no university_id column, so
+    // there is no verified link to attach here. Return empty — the UI shows
+    // "No verified scholarships linked" instead of guessing.
+    const uniScholarships: unknown[] = [];
 
     return NextResponse.json({
       university: uni,
-      programs: programs.map((p) => ({ ...p, requirements: programReqs[p.id] || [] })),
+      programs: programsWithReqs,
       cycles,
       sources: uniSources,
       scholarships: uniScholarships,
-      campuses: campusRows,
-      images,
+      campuses: [],
+      images: [],
     });
   } catch (error) {
     console.error("GET /api/universities/[id] error:", error);
