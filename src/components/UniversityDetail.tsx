@@ -130,10 +130,16 @@ interface UniversityDetailProps {
 }
 
 /** Spec §19: verified vs unavailable. NULL is never shown as a value. */
-function fmtMoney(v: number | null | undefined, currency = "USD", suffix = " / year"): string {
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$", GBP: "£", EUR: "€", CHF: "CHF ", CAD: "C$", AUD: "A$",
+  HKD: "HK$", SGD: "S$", JPY: "¥", KRW: "₩", UZS: "so'm ",
+};
+
+/** Format money generically for any currency — never assume USD. */
+function fmtMoney(v: number | null | undefined, currency = "USD", period = "year"): string {
   if (v == null) return "Not available";
-  const sym = currency === "USD" ? "$" : currency + " ";
-  return `${sym}${v.toLocaleString()}${suffix}`;
+  const sym = CURRENCY_SYMBOLS[currency] || `${currency} `;
+  return `${sym}${v.toLocaleString()} / ${period}`;
 }
 
 function fmtValue(v: string | number | null | undefined, suffix = ""): string {
@@ -187,6 +193,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
   const [programs, setPrograms] = useState<ProgramData[]>([]);
   const [cycles, setCycles] = useState<CycleData[]>([]);
   const [universityRequirements, setUniversityRequirements] = useState<any>(null);
+  const [money, setMoney] = useState<any>(null);
   const [scholarships, setScholarships] = useState<ScholarshipData[]>([]);
   const [sources, setSources] = useState<SourceData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -206,6 +213,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           setPrograms(data.programs || []);
           setCycles(data.applicationCycles || data.cycles || []);
           setUniversityRequirements(data.universityRequirements || null);
+          setMoney(data.money || null);
           setScholarships(data.scholarships || []);
           setSources(data.sources || []);
         }
@@ -513,10 +521,22 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           <DollarSign className="h-4 w-4 text-emerald-600" /> Tuition &amp; Costs
         </h2>
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Field label="Annual tuition" value={fmtMoney(uni.annualTuitionUsd, uni.tuitionCurrency)} />
-          <Field label="Living estimate" value={fmtMoney(uni.annualLivingEstUsd, uni.livingCostCurrency)} />
-          <Field label="Accommodation" value={fmtMoney(uni.accommodationCostUsd, "USD")} />
-          <Field label="Application fee" value={uni.applicationFee != null ? fmtMoney(uni.applicationFee, uni.applicationFeeCurrency, "") : "Not available"} />
+          <Field
+            label="Annual tuition"
+            value={fmtMoney(money?.annualTuition ?? uni.annualTuitionUsd, money?.tuitionCurrency ?? "USD", money?.tuitionPeriod ?? "year")}
+          />
+          <Field
+            label="Living estimate"
+            value={fmtMoney(money?.annualLivingEstimate ?? uni.annualLivingEstUsd, money?.livingCostCurrency ?? "USD", money?.livingCostPeriod ?? "year")}
+          />
+          <Field
+            label="Accommodation"
+            value={fmtMoney(money?.accommodationCost ?? uni.accommodationCostUsd, money?.accommodationCostCurrency ?? "USD", money?.accommodationCostPeriod ?? "year")}
+          />
+          <Field
+            label="Application fee"
+            value={money?.applicationFee != null ? fmtMoney(money.applicationFee, money.applicationFeeCurrency ?? "USD", "application") : "Not available"}
+          />
         </div>
       </div>
 

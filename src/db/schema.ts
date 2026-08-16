@@ -45,11 +45,20 @@ export const universities = pgTable("universities", {
   degreeLevel: text("degree_level").notNull().default("All"),
   programMajor: text("program_major").notNull(),
   // --- Financial (NULL = not verified, spec §14) ---
+  // Legacy USD columns (kept — DO NOT drop)
   annualTuitionUsd: integer("annual_tuition_usd"),
   annualLivingEstUsd: integer("annual_living_est_usd"),
-  tuitionCurrency: text("tuition_currency").notNull().default("USD"),
-  livingCostCurrency: text("living_cost_currency").notNull().default("USD"),
   accommodationCostUsd: integer("accommodation_cost_usd"),
+  // Generic currency columns (source of truth, mirror `programs` pattern)
+  annualTuition: numeric("annual_tuition").$type<number>(),
+  tuitionCurrency: text("tuition_currency").notNull().default("USD"),
+  tuitionPeriod: text("tuition_period").notNull().default("year"),
+  annualLivingEst: numeric("annual_living_est").$type<number>(),
+  livingCostCurrency: text("living_cost_currency").notNull().default("USD"),
+  livingCostPeriod: text("living_cost_period").notNull().default("year"),
+  accommodationCost: numeric("accommodation_cost").$type<number>(),
+  accommodationCostCurrency: text("accommodation_cost_currency").notNull().default("USD"),
+  accommodationCostPeriod: text("accommodation_cost_period").notNull().default("year"),
   applicationFee: integer("application_fee"),
   applicationFeeCurrency: text("application_fee_currency").notNull().default("USD"),
   // --- Academic requirements (NULL = not officially specified) ---

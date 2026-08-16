@@ -96,6 +96,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           programMajor: universities.programMajor,
           annualTuitionUsd: universities.annualTuitionUsd,
           annualLivingEstUsd: universities.annualLivingEstUsd,
+          accommodationCostUsd: universities.accommodationCostUsd,
+          annualTuition: universities.annualTuition,
+          tuitionCurrency: universities.tuitionCurrency,
+          tuitionPeriod: universities.tuitionPeriod,
+          annualLivingEst: universities.annualLivingEst,
+          livingCostCurrency: universities.livingCostCurrency,
+          livingCostPeriod: universities.livingCostPeriod,
+          accommodationCost: universities.accommodationCost,
+          accommodationCostCurrency: universities.accommodationCostCurrency,
+          accommodationCostPeriod: universities.accommodationCostPeriod,
+          applicationFee: universities.applicationFee,
+          applicationFeeCurrency: universities.applicationFeeCurrency,
           minGpa: universities.minGpa,
           minIelts: universities.minIelts,
           minSat: universities.minSat,
@@ -351,8 +363,33 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // "No verified scholarships linked" instead of guessing.
     const uniScholarships: unknown[] = [];
 
+    // ---------- Generic money fields (currency-aware, USD fallback) ----------
+    const money = {
+      annualTuition:
+        uni.annualTuition != null
+          ? Number(uni.annualTuition)
+          : uni.annualTuitionUsd ?? null,
+      tuitionCurrency: uni.tuitionCurrency ?? "USD",
+      tuitionPeriod: uni.tuitionPeriod ?? "year",
+      annualLivingEstimate:
+        uni.annualLivingEst != null
+          ? Number(uni.annualLivingEst)
+          : uni.annualLivingEstUsd ?? null,
+      livingCostCurrency: uni.livingCostCurrency ?? "USD",
+      livingCostPeriod: uni.livingCostPeriod ?? "year",
+      accommodationCost:
+        uni.accommodationCost != null
+          ? Number(uni.accommodationCost)
+          : uni.accommodationCostUsd ?? null,
+      accommodationCostCurrency: uni.accommodationCostCurrency ?? "USD",
+      accommodationCostPeriod: uni.accommodationCostPeriod ?? "year",
+      applicationFee: uni.applicationFee != null ? Number(uni.applicationFee) : null,
+      applicationFeeCurrency: uni.applicationFeeCurrency ?? "USD",
+    };
+
     return NextResponse.json({
       university: uni,
+      money,
       universityRequirements,
       programs: programsWithReqs,
       applicationCycles: cycles,
