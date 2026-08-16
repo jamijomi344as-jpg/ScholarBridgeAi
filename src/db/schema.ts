@@ -575,6 +575,8 @@ export const universityPrograms = pgTable("programs", {
   programUrl: text("official_url"), // DB column name
   applicationUrl: text("application_url"),
   isVerified: boolean("is_verified").notNull().default(false),
+  sourceUrl: text("source_url"),
+  lastVerifiedAt: timestamp("last_verified_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
