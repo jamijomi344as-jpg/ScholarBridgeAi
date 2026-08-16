@@ -150,6 +150,44 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       });
     }
 
+    // ---------- University-level requirements (merged from all programs) ----------
+    const uniReqs: Record<string, { minimumValue: number | null; valueText: string | null }> = {};
+    const flagAgg = { portfolio: false, interview: false, recommendation: false, personalStatement: false };
+    for (const p of programsWithReqs) {
+      for (const r of p.requirements) {
+        const key = r.requirementType;
+        if (!uniReqs[key]) uniReqs[key] = { minimumValue: r.minimumValue, valueText: r.valueText };
+        else if (uniReqs[key].minimumValue == null && r.minimumValue != null) {
+          uniReqs[key] = { minimumValue: r.minimumValue, valueText: r.valueText };
+        }
+      }
+      flagAgg.portfolio = flagAgg.portfolio || p.portfolioRequired;
+      flagAgg.interview = flagAgg.interview || p.interviewRequired;
+      flagAgg.recommendation = flagAgg.recommendation || p.recommendationRequired;
+      flagAgg.personalStatement = flagAgg.personalStatement || p.personalStatementRequired;
+    }
+
+    const universityRequirements = {
+      ielts: uniReqs.ielts?.minimumValue ?? uni.minIelts ?? null,
+      toefl: uniReqs.toefl?.minimumValue ?? null,
+      duolingo: uniReqs.duolingo?.minimumValue ?? null,
+      gpa: uniReqs.gpa?.minimumValue ?? uni.minGpa ?? null,
+      sat: uniReqs.sat?.minimumValue ?? uni.minSat ?? null,
+      act: uniReqs.act?.minimumValue ?? null,
+      pte: uniReqs.pte?.minimumValue ?? null,
+      cambridgeEnglish: uniReqs.cambridgeenglish?.minimumValue ?? null,
+      satRequired: uniReqs.sat != null || uni.minSat != null,
+      actRequired: uniReqs.act != null,
+      satMinimumPublished: uniReqs.sat?.minimumValue != null || uni.minSat != null,
+      actMinimumPublished: uniReqs.act?.minimumValue != null,
+      portfolioRequired: flagAgg.portfolio,
+      interviewRequired: flagAgg.interview,
+      recommendationRequired: flagAgg.recommendation,
+      personalStatementRequired: flagAgg.personalStatement,
+      other: uniReqs.other?.valueText ?? null,
+      subject: uniReqs.subject?.valueText ?? null,
+    };
+
     // ---------- Application cycles (no cycle_year in DB — derive from academic_year) ----------
     const cycleRows = await db
       .select()
@@ -238,6 +276,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     return NextResponse.json({
       university: uni,
+      universityRequirements,
       programs: programsWithReqs,
       cycles,
       sources: uniSources,

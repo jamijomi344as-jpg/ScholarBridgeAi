@@ -141,6 +141,17 @@ function fmtValue(v: string | number | null | undefined, suffix = ""): string {
   return `${v}${suffix}`;
 }
 
+/** Read a requirement value from the universityRequirements payload. */
+function req(
+  ur: { [key: string]: number | string | boolean | null } | null,
+  key: string,
+  fmt: (v: number) => string
+): string {
+  const v = ur?.[key];
+  if (typeof v === "number" && v !== null) return fmt(v);
+  return "Not specified";
+}
+
 function Field({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
@@ -159,6 +170,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
   const [uni, setUni] = useState<UniversityDetailData | null>(null);
   const [programs, setPrograms] = useState<ProgramData[]>([]);
   const [cycles, setCycles] = useState<CycleData[]>([]);
+  const [universityRequirements, setUniversityRequirements] = useState<any>(null);
   const [scholarships, setScholarships] = useState<ScholarshipData[]>([]);
   const [sources, setSources] = useState<SourceData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,6 +189,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           setUni(data.university);
           setPrograms(data.programs || []);
           setCycles(data.cycles || []);
+          setUniversityRequirements(data.universityRequirements || null);
           setScholarships(data.scholarships || []);
           setSources(data.sources || []);
         }
@@ -428,12 +441,47 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           <GraduationCap className="h-4 w-4 text-indigo-600" /> Academic Requirements
         </h2>
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <Field label="Minimum IELTS" value={uni.minIelts != null ? `IELTS ${uni.minIelts}` : "Not specified"} />
-          <Field label="Minimum GPA" value={uni.minGpa != null ? `${uni.minGpa} / 4.0` : "Not specified"} />
-          <Field label="Minimum SAT" value={uni.minSat != null ? `${uni.minSat}` : "Not specified"} />
+          <Field label="IELTS" value={req(universityRequirements, "ielts", (v) => `${v}`)} />
+          <Field label="TOEFL" value={req(universityRequirements, "toefl", (v) => `${v}`)} />
+          <Field label="Duolingo" value={req(universityRequirements, "duolingo", (v) => `${v}`)} />
+          <Field label="GPA" value={req(universityRequirements, "gpa", (v) => `${v} / 4.0`)} />
+          <Field
+            label="SAT"
+            value={
+              universityRequirements?.satRequired
+                ? universityRequirements?.satMinimumPublished
+                  ? String(universityRequirements.sat)
+                  : "Required — no minimum published"
+                : "Not specified"
+            }
+          />
+          <Field
+            label="ACT"
+            value={
+              universityRequirements?.actRequired
+                ? universityRequirements?.actMinimumPublished
+                  ? String(universityRequirements.act)
+                  : "Required — no minimum published"
+                : "Not specified"
+            }
+          />
+          <Field label="PTE Academic" value={req(universityRequirements, "pte", (v) => `${v}`)} />
+          <Field label="Cambridge English" value={req(universityRequirements, "cambridgeEnglish", (v) => `${v}`)} />
+          {universityRequirements?.other && (
+            <Field label="Other requirements" value={String(universityRequirements.other)} />
+          )}
+          {universityRequirements?.subject && (
+            <Field label="Subject requirements" value={String(universityRequirements.subject)} />
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
+          {universityRequirements?.portfolioRequired && <span>📁 Portfolio required</span>}
+          {universityRequirements?.interviewRequired && <span>🎤 Interview required</span>}
+          {universityRequirements?.recommendationRequired && <span>📩 Recommendation letters</span>}
+          {universityRequirements?.personalStatementRequired && <span>✍️ Personal statement</span>}
         </div>
         <p className="mt-3 text-[11px] text-slate-400 italic">
-          University-level minimums. Program-specific requirements (TOEFL, Duolingo, SAT/ACT, PTE, Cambridge English, documents) are listed under each program below.
+          Values shown come from verified program requirements. If a value is not specified by the university, it is marked &quot;Not specified&quot;.
         </p>
       </div>
 
@@ -594,22 +642,70 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
           <ShieldCheck className="h-4 w-4 text-emerald-600" /> Sources
         </h2>
         <div className="mt-3 space-y-2">
-          {uni.websiteUrl && (
-            <a href={uni.websiteUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:underline">
-              <ExternalLink className="h-3 w-3" /> Official University Website
-            </a>
-          )}
-          {sources.map((s) => (
-            <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:underline">
-              <ExternalLink className="h-3 w-3" /> {s.title}
-              {(s.source?.isOfficial || s.sourceType !== "ranking") && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+          {/* Main website link */}
+          {(() => {
+            const site = uni.officialWebsiteUrl || uni.websiteUrl;
+            if (!site) return null;
+            return (
+              <a href={site} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2.5 hover:border-indigo-300 transition-colors">
+                <Globe className="h-4 w-4 text-indigo-600 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold text-slate-800">Official University Website</span>
+                  <span className="block text-[10px] text-slate-400 truncate">{site}</span>
+                </span>
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 shrink-0">
                   <CheckCircle2 className="h-2.5 w-2.5" /> Official source
                 </span>
-              )}
-            </a>
-          ))}
-          {sources.length === 0 && (
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              </a>
+            );
+          })()}
+
+          {/* Other admissions URLs as sources */}
+          {[
+            { url: uni.admissionsUrl, label: "Admissions", type: "official_admissions" },
+            { url: uni.internationalAdmissionsUrl, label: "International Admissions", type: "official_international_admissions" },
+            { url: uni.undergraduateAdmissionsUrl, label: "Undergraduate Admissions", type: "official_undergraduate_admissions" },
+            { url: uni.applicationUrl, label: "Application Portal", type: "official_application_portal" },
+          ].map((link) => {
+            if (!link.url) return null;
+            return (
+              <a key={link.type} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2.5 hover:border-indigo-300 transition-colors">
+                <ExternalLink className="h-4 w-4 text-indigo-600 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold text-slate-800">{link.label}</span>
+                  <span className="block text-[10px] text-slate-400 truncate">{link.url}</span>
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 capitalize shrink-0">{link.type.replace(/_/g, " ")}</span>
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              </a>
+            );
+          })}
+
+          {/* Linked sources from university_sources */}
+          {sources.map((s) => {
+            const url = s.source?.url || s.url;
+            const title = s.source?.title || s.title || "Source";
+            const type = s.sourceType || s.source?.title ? "official" : "source";
+            return (
+              <a key={s.id} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2.5 hover:border-indigo-300 transition-colors">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-extrabold text-slate-800">{title}</span>
+                  <span className="block text-[10px] text-slate-400 truncate">{url}</span>
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 capitalize shrink-0">{type.replace(/_/g, " ")}</span>
+                {(s.source?.isOfficial || s.sourceType !== "ranking") && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 shrink-0">
+                    <CheckCircle2 className="h-2.5 w-2.5" /> Official
+                  </span>
+                )}
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              </a>
+            );
+          })}
+
+          {sources.length === 0 && !uni.admissionsUrl && !uni.applicationUrl && (
             <p className="text-[11px] text-slate-400">QS World University Rankings 2027 (verified ranking source).</p>
           )}
         </div>
