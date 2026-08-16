@@ -186,6 +186,8 @@ export interface AuditReport {
   updatedRequirements: string[];
   insertedCycles: string[];
   insertedScholarships: string[];
+  /** Every proposed insert with full evidence (entity/name/source/confidence/reason). */
+  insertedEntities: InsertedEntity[];
   newSources: { url: string; title: string }[];
   /** Fields kept as-is (identical value / weaker source). Strings = reasons. */
   skippedFields: (string | FieldDecision)[];
@@ -222,6 +224,23 @@ export interface PageFetchNote {
   extracted: number;
   /** When extracted === 0: reason no supported field was extracted. */
   reason?: string;
+}
+
+/** A proposed entity INSERT — every insert must be fully explained (spec §1, §2). */
+export interface InsertedEntity {
+  entity: "program" | "application_cycle" | "scholarship";
+  /** Title/name of the entity. */
+  name: string;
+  /** Fields that would be written. */
+  fields: string[];
+  /** Old value (always null for inserts). */
+  oldValue: unknown;
+  newValue: unknown;
+  sourceUrl: string;
+  sourceTitle: string;
+  sourceType: string;
+  confidence: number;
+  reason: string;
 }
 
 /** Per-page classification decision (debug report). */

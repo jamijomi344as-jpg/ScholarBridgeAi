@@ -224,18 +224,55 @@ const hits = (text: string, re: RegExp): number => {
   return m ? m.length : 0;
 };
 
-/** Main-content evidence per category — exported for the AI safety gate. */
-export function hasContentEvidenceFor(category: string, mainText: string): boolean {
-  const pair = CONTENT_EVIDENCE.find(([c]) => c === category);
-  return pair ? pair[1].test(mainText) : true;
-}
-
 /** Actual calendar date in main content ("15 October 2026"). */
 const HAS_REAL_DATE =
   /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\b/i;
 
 /** "deadline ... 2027" / "deadlines for 2027 entry" — clear entry-year deadline wording. */
 const HAS_ENTRY_YEAR_DEADLINE = /\bdeadlines?\b[^.\n]{0,70}\b(?:20\d{2}|entry)\b|\b20\d{2}\s+entry\b[^.\n]{0,40}\bdeadlines?\b/i;
+
+/** International: page must be ABOUT international students/applicants —
+ *  a title/H1 focus, or visa/immigration wording with repeated mentions.
+ *  Mere mentions ("fees for international students") are never enough. */
+export function isInternationalMainContent(titleText: string, mainText: string): boolean {
+  const hits = (mainText.match(/\binternational (students?|applicants?|admissions?)\b|\boverseas\b/gi) || []).length;
+  return (
+    /\b(international (students?|applicants?|admissions?)|overseas)\b/i.test(titleText) ||
+    (/\b(visas?|immigration)\b/i.test(mainText) && hits >= 3)
+  );
+}
+
+/** Deadline: actual dates or clear entry-year deadline wording in MAIN content. */
+export function isDeadlineMainContent(mainText: string): boolean {
+  return (
+    CONTENT_EVIDENCE[4][1].test(mainText) &&
+    (HAS_REAL_DATE.test(mainText) || HAS_ENTRY_YEAR_DEADLINE.test(mainText))
+  );
+}
+
+/** Tuition: actual fee DATA in main content — a bare "Tuition fees" label is not enough. */
+export function isTuitionMainContent(mainText: string): boolean {
+  return (
+    /\b(annual tuition|overseas tuition|home tuition|fees for 20\d\d|per year tuition)\b/i.test(mainText) ||
+    (/\btuition fees?\b/i.test(mainText) && /(£|\$|€|usd|gbp| per (year|semester|term|month)|annual|yearly)/i.test(mainText))
+  );
+}
+
+/** Main-content evidence per category — exported for the AI safety gate. */
+export function hasContentEvidenceFor(category: string, mainText: string, titleText = ""): boolean {
+  switch (category) {
+    case "international":
+      return isInternationalMainContent(titleText, mainText);
+    case "deadline":
+      return isDeadlineMainContent(mainText);
+    case "tuition":
+      return isTuitionMainContent(mainText);
+    default: {
+      const pair = CONTENT_EVIDENCE.find(([c]) => c === category);
+      return pair ? pair[1].test(mainText) : true;
+    }
+  }
+}
 
 export function classifyResearchPage(
   url: string,
@@ -335,21 +372,15 @@ export function classifyResearchPage(
     CONTENT_EVIDENCE[1][1].test(mainText);
   // Tuition requires actual fee DATA in main content — a bare "Tuition fees"
   // nav/link label is not enough (user rule 5).
-  const gateTuition =
-    (/\b(annual tuition|overseas tuition|home tuition|fees for 20\d\d|per year tuition)\b/i.test(mainText)) ||
-    (/\btuition fees?\b/i.test(mainText) && /(£|\$|€|usd|gbp| per (year|semester|term|month)|annual|yearly)/i.test(mainText));
+  const gateTuition = isTuitionMainContent(mainText);
   const gateLiving = CONTENT_EVIDENCE[3][1].test(mainText);
   // Deadline requires ACTUAL dates or clear entry-year deadline wording —
   // the bare word "deadline" is never enough (user rule 5).
-  const gateDeadline =
-    CONTENT_EVIDENCE[4][1].test(mainText) &&
-    (HAS_REAL_DATE.test(mainText) || HAS_ENTRY_YEAR_DEADLINE.test(mainText));
+  const gateDeadline = isDeadlineMainContent(mainText);
   const gateAdmissions = CONTENT_EVIDENCE[5][1].test(mainText);
-  // International requires main content ABOUT international students:
-  // visa/immigration wording, or the topic mentioned repeatedly (a single
-  // "fees for international students" mention is not an international page).
-  const intlHits = (mainText.match(/\binternational (students?|applicants?|admissions?)\b|\boverseas\b/gi) || []).length;
-  const gateInternational = /visas?|immigration|english language requirements?/i.test(mainText) || intlHits >= 2;
+  // International requires title/H1 focus OR visa/immigration + repeated
+  // mentions — mere mentions are never enough (user rule 10).
+  const gateInternational = isInternationalMainContent(titleText, mainText);
   const gateRequirements = CONTENT_EVIDENCE[7][1].test(mainText);
 
   const gates: Record<string, boolean> = {

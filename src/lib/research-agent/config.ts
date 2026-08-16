@@ -18,8 +18,10 @@ export const AGENT_CONFIG = {
   maxHubPages: 4,
   /** AI request budget per run (spec §17): classification + extraction per page, capped. */
   aiMaxCallsPerRun: 24,
-  /** Max program/scholarship/requirements URLs added from a sitemap (spec §3C). */
-  maxSitemapUrls: 40,
+  /** Max sitemap FILES parsed (nested index children count) (spec §3C). */
+  maxSitemapFiles: 10,
+  /** Max program/scholarship/requirements URLs added from sitemaps (spec §3C). */
+  maxSitemapUrls: 100,
   /** Confidence threshold to auto-write (below → review_required). */
   writeConfidence: 0.7,
   /** Confidence threshold for "verified" status. */

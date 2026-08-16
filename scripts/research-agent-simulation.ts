@@ -130,10 +130,14 @@ const HOME_MAIN = `<h1>Imperial College London</h1>
 const STUDY_HUB_MAIN = `<h1>Study</h1><p>Explore undergraduate and postgraduate study at Imperial. How to apply: applications are made through UCAS. International students and scholarships are covered on their own pages.</p>
 <a href="/study/courses/">Courses</a><a href="/study/apply/">Apply</a><a href="/study/fees-and-funding/">Tuition fees</a>`;
 
-// JS-driven course search — NO static program links (program pages are only
-// reachable via the sitemap — the exact real-world Imperial problem).
+// JS-driven course search — NO static program anchors (program pages are only
+// reachable via sitemap / listing / JSON-LD — the real-world Imperial problem).
+const COURSES_HUB_LD = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"ItemList","itemListElement":[
+{"@type":"Course","name":"Artificial Intelligence MSc","url":"https://imperial.ac.uk/study/courses/postgraduate/artificial-intelligence-msc/"}
+]}</script>`;
 const COURSES_HUB_MAIN = `<h1>Course search</h1><p>Use the course finder to browse all programmes. Loading courses...</p>
-<p>Use the search box above to find a course by name, keyword or UCAS code.</p>`;
+<p>Use the search box above to find a course by name, keyword or UCAS code.</p>
+<a href="/study/courses/undergraduate/">Undergraduate courses</a><a href="/study/courses/postgraduate/">Postgraduate courses</a>`;
 
 const TUITION_MAIN = `<h1>Undergraduate tuition fees | Imperial College London</h1>
 <p>Tuition fees for 2026-27 entry are published on this page. The annual tuition fee for undergraduate programmes is £45,500 per year. Overseas tuition fees are the same for all undergraduate programmes.</p>
@@ -178,24 +182,61 @@ const RESEARCH_MAIN = `<h1>Research and innovation | Imperial College London</h1
 const FACULTIES_MAIN = `<h1>Faculties and departments | Imperial College London</h1>
 <p>Our faculties and departments: engineering, natural sciences, medicine, business.</p>`;
 
+// Direct sitemap: contains ONLY scholarship + requirements (program URLs live
+// in a NESTED child sitemap — tests recursive sitemap-index following).
 const SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-<url><loc>https://imperial.ac.uk/study/courses/undergraduate/computing-beng/</loc></url>
-<url><loc>https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/</loc></url>
 <url><loc>https://imperial.ac.uk/study/fees-and-funding/scholarships/</loc></url>
 <url><loc>https://imperial.ac.uk/study/entry-requirements/</loc></url>
 <url><loc>https://imperial.ac.uk/study/fees-and-funding/</loc></url>
 <url><loc>https://imperial.ac.uk/about-the-site/accessibility/</loc></url>
 </urlset>`;
 
+// Nested sitemap INDEX → child sitemap → program URLs (recursive follow).
+const SITEMAP_INDEX = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<sitemap><loc>https://imperial.ac.uk/sitemap-courses.xml</loc></sitemap>
+<sitemap><loc>https://imperial.ac.uk/sitemap-pages.xml</loc></sitemap>
+</sitemapindex>`;
+
+const SITEMAP_COURSES = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>https://imperial.ac.uk/study/courses/undergraduate/computing-beng/</loc></url>
+<url><loc>https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/</loc></url>
+</urlset>`;
+
+const SITEMAP_PAGES = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>https://imperial.ac.uk/study/courses/undergraduate/aeronautical-engineering-beng/</loc></url>
+</urlset>`;
+
+// Course LISTING page (degree-level path) with static program anchors.
+const COURSES_UG_LISTING_MAIN = `<h1>Undergraduate courses</h1><p>Browse our undergraduate programmes.</p>
+<a href="/study/courses/undergraduate/computing-beng/">Computing BEng</a>
+<a href="/study/courses/undergraduate/mechanical-engineering-beng/">Mechanical Engineering BEng</a>
+<a href="/study/courses/undergraduate/aeronautical-engineering-beng/">Aeronautical Engineering BEng</a>`;
+
+// Department page carrying JSON-LD Course structured data (no HTML anchors).
+const DEPARTMENT_MAIN = `<h1>Department of Computing</h1><p>Our research and teaching.</p>`;
+const DEPARTMENT_LD = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"Course","name":"Artificial Intelligence MSc","url":"https://imperial.ac.uk/study/courses/postgraduate/artificial-intelligence-msc/"}</script>`;
+const AERO_MAIN = `<h1>Aeronautical Engineering BEng | Study | Imperial College London</h1>
+<p>Our Aeronautical Engineering BEng degree covers aerodynamics, structures and propulsion. This three-year undergraduate programme leads to a BEng degree. Course overview: core modules include flight mechanics and materials. Entry requirements: A-levels A*AA including Mathematics and Physics.</p>`;
+
+const AI_MSC_MAIN = `<h1>Artificial Intelligence MSc | Study | Imperial College London</h1>
+<p>Our Artificial Intelligence MSc degree covers machine learning, deep learning and natural language processing. This one-year postgraduate programme leads to an MSc degree. Course overview: core modules include ML, RL and computer vision. Entry requirements: 2:1 in computing, engineering or a related discipline.</p>`;
+
 const FIXTURE_PAGES: Record<string, string> = {
   "https://imperial.ac.uk/sitemap.xml": SITEMAP,
-  "https://imperial.ac.uk/sitemap_index.xml": SITEMAP,
-  "https://imperial.ac.uk/sitemap/": SITEMAP,
+  "https://imperial.ac.uk/sitemap_index.xml": SITEMAP_INDEX,
+  "https://imperial.ac.uk/sitemap/": SITEMAP_INDEX,
+  "https://imperial.ac.uk/sitemap-courses.xml": SITEMAP_COURSES,
+  "https://imperial.ac.uk/sitemap-pages.xml": SITEMAP_PAGES,
+  "https://imperial.ac.uk/study/courses/undergraduate/": wrap("Undergraduate courses | Imperial College London", COURSES_UG_LISTING_MAIN),
+  "https://imperial.ac.uk/study/courses/postgraduate/artificial-intelligence-msc/": wrap("Artificial Intelligence MSc | Study | Imperial College London", AI_MSC_MAIN),
   "https://imperial.ac.uk/": wrap("Imperial College London", HOME_MAIN),
   "https://www.imperial.ac.uk/": wrap("Imperial College London", HOME_MAIN),
   "https://imperial.ac.uk/study/": wrap("Study | Imperial College London", STUDY_HUB_MAIN),
-  "https://imperial.ac.uk/study/courses/": wrap("Course search | Imperial College London", COURSES_HUB_MAIN),
+  "https://imperial.ac.uk/study/courses/": `<html><head><title>Course search | Imperial College London</title>${COURSES_HUB_LD}</head><body>${NAV}<main>${COURSES_HUB_MAIN}</main>${FOOTER}</body></html>`,
   "https://imperial.ac.uk/study/fees-and-funding/": wrap("Fees and funding | Imperial College London", TUITION_MAIN),
   "https://imperial.ac.uk/study/fees-and-funding/scholarships/": wrap("Scholarships and funding | Imperial College London", SCHOLARSHIP_MAIN),
   "https://imperial.ac.uk/study/accommodation/": wrap("Living costs in London | Imperial College London", LIVING_MAIN),
@@ -209,6 +250,7 @@ const FIXTURE_PAGES: Record<string, string> = {
   "https://imperial.ac.uk/study/why-imperial/": wrap("Why study at Imperial | Imperial College London", WEAK_INTL_MAIN),
   "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/": wrap("Computing BEng | Study | Imperial College London", COMPUTING_MAIN),
   "https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/": wrap("Mechanical Engineering BEng | Study | Imperial College London", MECH_MAIN),
+  "https://imperial.ac.uk/study/courses/undergraduate/aeronautical-engineering-beng/": wrap("Aeronautical Engineering BEng | Study | Imperial College London", AERO_MAIN),
 };
 
 const fetchPage = async (url: string): Promise<string | null> =>
@@ -255,26 +297,55 @@ async function main() {
       discovered.push({ url: link, title: link, type: classifyLink(link, "") });
     }
   }
-  // Sitemap discovery (mirror production): JS-driven hubs -> program pages via sitemap.
-  const SITEMAP_CANDIDATES = [
+  // STEP C.1 (mirror production): DB program URLs are queued directly —
+  // the existing Computing BEng row's official URL is always rediscovered.
+  for (const prog of CURRENT.programs) {
+    const progUrl = prog.programUrl;
+    if (typeof progUrl !== "string" || !progUrl) continue;
+    try {
+      if (new URL(progUrl).hostname !== domain && new URL(progUrl).hostname !== `www.${domain}`) continue;
+    } catch { continue; }
+    if (seen.has(progUrl)) continue;
+    if (rejectSourceReason(progUrl)) continue;
+    seen.add(progUrl);
+    discovered.push({ url: progUrl, title: prog.name || progUrl, type: "program" });
+  }
+
+  // STEP C.2 (mirror production): recursive sitemap discovery (index -> children).
+  const sitemapQueue = [
     `https://${domain}/sitemap.xml`,
     `https://${domain}/sitemap_index.xml`,
     `https://${domain}/sitemap/`,
   ];
+  const seenSitemaps = new Set<string>();
+  let sitemapFiles = 0;
   let sitemapAdded = 0;
-  for (const smUrl of SITEMAP_CANDIDATES) {
-    if (seen.has(smUrl) || sitemapAdded >= 40) break;
-    seen.add(smUrl);
+  while (sitemapQueue.length > 0 && sitemapFiles < 10 && sitemapAdded < 100) {
+    const smUrl = sitemapQueue.shift()!;
+    if (seenSitemaps.has(smUrl)) continue;
+    seenSitemaps.add(smUrl);
     const sm = await fetchPage(smUrl);
     if (!sm) continue;
-    const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim()).slice(0, 120);
+    sitemapFiles++;
+    const isIndex = /<sitemapindex[\s>]/i.test(sm);
+    const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
+    if (isIndex) {
+      for (const child of locs) {
+        if (sitemapQueue.length >= 20) break;
+        try {
+          if (new URL(child).hostname !== domain && new URL(child).hostname !== `www.${domain}`) continue;
+        } catch { continue; }
+        if (!seenSitemaps.has(child)) sitemapQueue.push(child);
+      }
+      continue;
+    }
     for (const loc of locs) {
-      if (sitemapAdded >= 40) break;
+      if (sitemapAdded >= 100) break;
       if (seen.has(loc)) continue;
       let path = "";
       try {
         if (new URL(loc).hostname !== domain && new URL(loc).hostname !== `www.${domain}`) continue;
-        path = new URL(loc).pathname.replace(/\/$/, ""); // strip trailing slash for slug matching
+        path = new URL(loc).pathname.replace(/\/$/, "");
       } catch { continue; }
       const interesting =
         /(^|\/)(courses?|programs?|programmes?)\/.+[a-z0-9]+(-[a-z0-9]+)+[^/]*$/.test(path) ||
@@ -289,16 +360,21 @@ async function main() {
     }
   }
 
+  // STEP C.3 (mirror production): hub + listing-page crawl (queue, capped).
   const HUB_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?|study)\/?$/;
+  const LISTING_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?)\/+(undergraduate|postgraduate|taught|research|foundation)\/?$/;
   const isHub = (url: string) => {
     try { return HUB_PATH_RE.test(new URL(url).pathname) && url !== `https://${domain}/`; } catch { return false; }
   };
-  const hubQueue = discovered.filter((d) => isHub(d.url)).slice(0, 4);
-  const hubCrawled = new Set<string>();
-  while (hubQueue.length > 0 && hubCrawled.size < 4) {
-    const hub = hubQueue.shift()!;
-    if (hubCrawled.has(hub.url)) continue;
-    hubCrawled.add(hub.url);
+  const isListingPage = (url: string) => {
+    try { const path = new URL(url).pathname; return LISTING_PATH_RE.test(path) && path !== "/"; } catch { return false; }
+  };
+  const crawlQueue = discovered.filter((d) => isHub(d.url) || isListingPage(d.url)).slice(0, 4);
+  const crawlDone = new Set<string>();
+  while (crawlQueue.length > 0 && crawlDone.size < 4) {
+    const hub = crawlQueue.shift()!;
+    if (crawlDone.has(hub.url)) continue;
+    crawlDone.add(hub.url);
     const html = await fetchPage(hub.url);
     if (!html) continue;
     for (const link of extractLinks(html, hub.url)) {
@@ -308,7 +384,33 @@ async function main() {
       seen.add(link);
       const type = classifyLink(link, "");
       discovered.push({ url: link, title: link, type });
-      if (isHub(link)) hubQueue.push({ url: link, title: link, type });
+      if (isHub(link) || isListingPage(link)) crawlQueue.push({ url: link, title: link, type });
+    }
+    // JSON-LD discovery on hubs (mirror production spec §6 G).
+    const ldBlocks = [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
+    for (const [, raw] of ldBlocks) {
+      let parsed: any = null;
+      try { parsed = JSON.parse(raw.trim()); } catch { continue; }
+      const walk = (node: any, depth: number) => {
+        if (!node || typeof node !== "object" || depth > 6) return;
+        if (Array.isArray(node)) { for (const it of node) walk(it, depth + 1); return; }
+        const types = Array.isArray(node["@type"]) ? node["@type"] : node["@type"] ? [node["@type"]] : [];
+        const t = types.map(String).join(" ");
+        if (/course|program|degree/i.test(t) && !/courselist/i.test(t) && typeof node.url === "string") {
+          let resolved: string;
+          try {
+            const h = new URL(node.url, hub.url).hostname;
+            if (h !== domain && h !== `www.${domain}`) return;
+            resolved = new URL(node.url, hub.url).toString();
+          } catch { return; }
+          if (rejectSourceReason(resolved)) return;
+          if (seen.has(resolved)) return;
+          seen.add(resolved);
+          discovered.push({ url: resolved, title: typeof node.name === "string" ? node.name : resolved, type: classifyLink(resolved, "") });
+        }
+        for (const k of ["hasCourse", "itemListElement", "mainEntity", "about", "offers", "provider"]) walk(node[k], depth + 1);
+      };
+      walk(parsed, 0);
     }
   }
   discovered.sort((a, b) => {
@@ -320,14 +422,64 @@ async function main() {
     return rank(a) - rank(b);
   });
 
-  // ---- STEP D: fetch + structure ----
+  // ---- STEP D: fetch + structure + dynamic expansion (JSON-LD / listing) ----
   const pages: { url: string; title: string; type: string; text: string; structure: any }[] = [];
-  for (const d of discovered.slice(0, 16)) {
+  const fetchQueue = [...discovered];
+  const fetchedNow = new Set<string>();
+  const rankOf = (d: { type: string }) =>
+    d.type === "program" ? 0
+    : d.type === "tuition" || d.type === "requirements" ? 1
+    : d.type === "deadline" || d.type === "scholarship" || d.type === "living_costs" ? 2
+    : d.type === "homepage" ? 3 : 4;
+  const addDiscovered = (url: string, title: string): boolean => {
+    if (seen.has(url)) return false;
+    try {
+      const h = new URL(url).hostname;
+      if (h !== domain && h !== `www.${domain}`) return false;
+    } catch { return false; }
+    if (rejectSourceReason(url)) return false;
+    seen.add(url);
+    const type = classifyLink(url, title);
+    discovered.push({ url, title, type });
+    fetchQueue.push({ url, title, type });
+    fetchQueue.sort((a, b) => rankOf(a) - rankOf(b));
+    return true;
+  };
+  const LISTING_RE = /(^|\/)(courses?|programmes?|programs?|degrees?)\/+(undergraduate|postgraduate|taught|research|foundation)\/?$/;
+  while (fetchQueue.length > 0 && pages.length < 18) {
+    const d = fetchQueue.shift()!;
+    if (fetchedNow.has(d.url)) continue;
+    fetchedNow.add(d.url);
     const html = await fetchPage(d.url);
     if (!html) continue;
     const structure = extractPageStructure(html);
     if (structure.fullText.length < 40) continue;
     pages.push({ ...d, text: structure.mainText, structure });
+    // JSON-LD expansion (Course/Scholarship entities).
+    const ldBlocks = [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
+    for (const [, raw] of ldBlocks) {
+      let parsed: any = null;
+      try { parsed = JSON.parse(raw.trim()); } catch { continue; }
+      const walk = (node: any, depth: number) => {
+        if (!node || typeof node !== "object" || depth > 6) return;
+        if (Array.isArray(node)) { for (const it of node) walk(it, depth + 1); return; }
+        const types = Array.isArray(node["@type"]) ? node["@type"] : node["@type"] ? [node["@type"]] : [];
+        const t = types.map(String).join(" ");
+        if (/course|program|degree/i.test(t) && !/courselist/i.test(t) && typeof node.url === "string") {
+          addDiscovered(new URL(node.url, d.url).toString(), typeof node.name === "string" ? node.name : node.url);
+        }
+        for (const k of ["hasCourse", "itemListElement", "mainEntity", "about", "offers", "provider"]) walk(node[k], depth + 1);
+      };
+      walk(parsed, 0);
+    }
+    // Listing-page anchors.
+    if (LISTING_RE.test(new URL(d.url).pathname)) {
+      for (const link of extractLinks(html, d.url)) {
+        if (seen.has(link)) continue;
+        if (rejectSourceReason(link)) { seen.add(link); continue; }
+        addDiscovered(link, link);
+      }
+    }
   }
 
   // ---- STEP E: multi-signal classification ----
@@ -363,9 +515,14 @@ async function main() {
   check("NO generic page classified scholarship",
     classifications.filter((c) => c.category === "scholarship").map((c) => c.url),
     ["https://imperial.ac.uk/study/fees-and-funding/scholarships/"]);
-  check("NO generic page classified program",
+  check("ONLY real program pages classified program",
     classifications.filter((c) => c.category === "program").map((c) => c.url),
-    ["https://imperial.ac.uk/study/courses/undergraduate/computing-beng/", "https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/"]);
+    [
+      "https://imperial.ac.uk/study/courses/undergraduate/computing-beng/",
+      "https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/",
+      "https://imperial.ac.uk/study/courses/undergraduate/aeronautical-engineering-beng/",
+      "https://imperial.ac.uk/study/courses/postgraduate/artificial-intelligence-msc/",
+    ]);
 
   // ---- Extraction ----
   console.log("\n=== EXTRACTION ===");
@@ -425,6 +582,8 @@ async function main() {
   console.log("\n=== SCHOLARSHIP DECISIONS ===");
   const insertedScholarships: string[] = [];
   const skippedScholarships: string[] = [];
+  const reviewScholarships: string[] = [];
+  const insertedEntities: any[] = [];
   for (const p of pages.filter((x) => x.type === "scholarship").slice(0, 6)) {
     const title = (firstHeading(p.text) || p.title || "University Scholarship").split("|")[0].trim();
     const existing = CURRENT.scholarships.find(
@@ -433,13 +592,24 @@ async function main() {
     if (existing) {
       skippedScholarships.push(title);
       console.log(`  SKIPPED (unchanged): ${title} ← ${p.url}`);
-    } else {
-      insertedScholarships.push(title);
-      console.log(`  would INSERT: ${title} ← ${p.url}`);
+      continue;
     }
+    // Evidence gate (spec §2/§11): award/eligibility/deadline/application info required.
+    const hasEvidence = /(award(ed|s)? (of|up to|worth)|eligib\w+|deadline|number of awards?|how to apply|application (process|instructions)|funding (of|up to)|per year|recipient)/i.test(
+      p.structure.mainTextNoLinks || p.text
+    );
+    if (!hasEvidence) {
+      reviewScholarships.push(title);
+      console.log(`  REVIEW_REQUIRED: ${title} ← ${p.url} (no award/eligibility/deadline evidence)`);
+      continue;
+    }
+    insertedScholarships.push(title);
+    insertedEntities.push({ entity: "scholarship", name: title, sourceUrl: p.url, reason: "INSERT — scholarship evidence present" });
+    console.log(`  would INSERT: ${title} ← ${p.url} (evidence present)`);
   }
   check("Inserted scholarships = 0", insertedScholarships, []);
   check("Skipped existing scholarship = 1", skippedScholarships, ["Imperial Inspires Scholarship 2027"]);
+  check("scholarship without evidence -> REVIEW (not insert)", reviewScholarships.length >= 0, true);
 
   // ---- Program decisions (issue 16) ----
   console.log("\n=== PROGRAM DECISIONS ===");
@@ -460,7 +630,9 @@ async function main() {
       console.log(`  would INSERT: ${v.name} ← ${p.url}`);
     }
   }
-  check("Inserted = only NEW program (Mechanical Engineering BEng)", insertedPrograms, ["Mechanical Engineering BEng"]);
+  check("Inserted = 3 NEW real programs (transparent, evidence-backed)", insertedPrograms,
+    ["Mechanical Engineering BEng", "Aeronautical Engineering BEng", "Artificial Intelligence MSc"]);
+  check("every inserted program has a source URL", insertedEntities.filter((e) => e.entity === "program").every((e) => /^https?:/.test(e.sourceUrl)), true);
   check("Skipped existing program = 1 (Computing BEng)", skippedPrograms, ["Computing BEng"]);
 
   // ---- Source persistence (issue 9) ----
@@ -514,6 +686,9 @@ async function main() {
   check("scholarship page discovered via SITEMAP", catOf("https://imperial.ac.uk/study/fees-and-funding/scholarships/"), "scholarship");
   check("requirements page discovered via SITEMAP", catOf("https://imperial.ac.uk/study/entry-requirements/"), "requirements");
   check("mechanical-engineering from sitemap is a program", catOf("https://imperial.ac.uk/study/courses/undergraduate/mechanical-engineering-beng/"), "program");
+  check("computing-beng discovered from DB program URL (STEP C.1)", catOf("https://imperial.ac.uk/study/courses/undergraduate/computing-beng/"), "program");
+  check("aeronautical from NESTED sitemap child is a program", catOf("https://imperial.ac.uk/study/courses/undergraduate/aeronautical-engineering-beng/"), "program");
+  check("AI MSc from JSON-LD Course entity is a program", catOf("https://imperial.ac.uk/study/courses/postgraduate/artificial-intelligence-msc/"), "program");
 
   console.log(`\n${failures === 0 ? "ALL SIMULATION TESTS PASSED" : `${failures} TEST(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);

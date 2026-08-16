@@ -331,6 +331,31 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
                 </div>
               </div>
             )}
+            {report.insertedEntities?.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Proposed inserts ({report.insertedEntities.length}) — fully explained</p>
+                <div className="space-y-1.5">
+                  {report.insertedEntities.slice(0, 15).map((e: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-2.5 py-1.5 text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-emerald-700">{e.entity}: {e.name}</span>
+                        <span className="text-[9px] font-black uppercase tracking-wide text-emerald-500">INSERT</span>
+                        {e.confidence != null && (
+                          <span className="ml-auto text-[10px] text-slate-500">confidence {(Number(e.confidence) * 100).toFixed(0)}%</span>
+                        )}
+                      </div>
+                      {e.fields?.length > 0 && <p className="text-slate-600 mt-0.5">fields: {e.fields.join(", ")}</p>}
+                      {e.sourceUrl && (
+                        <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer" className="block text-indigo-600 hover:underline truncate mt-0.5">
+                          {e.sourceTitle || e.sourceUrl}
+                        </a>
+                      )}
+                      {e.reason && <p className="text-slate-400 mt-0.5">{e.reason}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {report.reviewRequired.length > 0 && (
               <div className="mb-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Review required</p>

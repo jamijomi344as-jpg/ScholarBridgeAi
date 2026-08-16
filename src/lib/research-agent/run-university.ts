@@ -62,6 +62,13 @@ export async function runUniversity(
   const updatedRequirements: string[] = [];
   const insertedCycles: string[] = [];
   const insertedScholarships: string[] = [];
+  // Every proposed insert with full evidence (spec §1, §2 — no unspecified inserts).
+  const insertedEntities: {
+    entity: "program" | "application_cycle" | "scholarship";
+    name: string; fields: string[]; oldValue: unknown; newValue: unknown;
+    sourceUrl: string; sourceTitle: string; sourceType: string;
+    confidence: number; reason: string;
+  }[] = [];
   const newSources: { url: string; title: string }[] = [];
   const rejectedSources: { url: string; reason: string }[] = [];
   const discoveryOnly: { url: string; title: string; type: string; reason: string }[] = [];
@@ -133,7 +140,7 @@ export async function runUniversity(
       const report = buildReport({
         universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
         insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-        newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
+        insertedEntities, newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
       });
       await logRunFinish(logId, report);
       return report;
@@ -210,57 +217,109 @@ export async function runUniversity(
       }
     }
 
-    // Sitemap discovery (generic, spec §3C): on JS-driven sites program and
-    // scholarship pages are often reachable ONLY via the sitemap. Standard
-    // sitemap locations are probed; only interesting page kinds are added.
+    // STEP C.1 — probe EXISTING DB program URLs (the DB is the source of
+    // truth: a program row that already carries its official URL must be
+    // fetched directly — this is how Computing BEng is always rediscovered).
+    for (const prog of current.programs) {
+      const progUrl = prog.programUrl || prog.officialUrl || prog.applicationUrl;
+      if (typeof progUrl !== "string" || !progUrl) continue;
+      try {
+        if (!isSameDomain(progUrl, domain)) continue;
+      } catch {
+        continue;
+      }
+      if (seen.has(progUrl)) continue;
+      const reason = rejectSourceReason(progUrl);
+      if (reason) continue;
+      seen.add(progUrl);
+      discovered.push({ url: progUrl, title: prog.name || progUrl, type: "program" });
+      progress(`DB program URL queued: ${prog.name || progUrl}`);
+    }
+
+    // STEP C.2 — sitemap discovery (generic, spec §3C, §6): on JS-driven
+    // sites program/scholarship pages are often reachable ONLY via the
+    // sitemap. Standard locations are probed, and sitemap INDEX files are
+    // followed RECURSIVELY (nested sitemaps), with safe caps.
     {
-      const sitemapCandidates = [
+      const sitemapQueue = [
         `https://${domain}/sitemap.xml`,
         `https://${domain}/sitemap_index.xml`,
         `https://${domain}/sitemap/`,
         `https://${domain}/sitemap-index.xml`,
       ];
+      const seenSitemaps = new Set<string>();
+      let sitemapFiles = 0;
       let sitemapAdded = 0;
-      for (const smUrl of sitemapCandidates) {
-        if (seen.has(smUrl) || sitemapAdded >= AGENT_CONFIG.maxSitemapUrls) break;
-        seen.add(smUrl);
-        progress(`Probing sitemap ${smUrl} for program/scholarship pages...`);
+      while (
+        sitemapQueue.length > 0 &&
+        sitemapFiles < AGENT_CONFIG.maxSitemapFiles &&
+        sitemapAdded < AGENT_CONFIG.maxSitemapUrls
+      ) {
+        const smUrl = sitemapQueue.shift()!;
+        if (seenSitemaps.has(smUrl)) continue;
+        seenSitemaps.add(smUrl);
+        progress(`Probing sitemap ${smUrl} (${sitemapFiles + 1}/${AGENT_CONFIG.maxSitemapFiles})...`);
         const sm = await fetchPage(smUrl);
         if (!sm) continue;
-        const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/gi)]
-          .map((m) => m[1].trim())
-          .slice(0, AGENT_CONFIG.maxSitemapUrls * 3);
-        for (const loc of locs) {
-          if (sitemapAdded >= AGENT_CONFIG.maxSitemapUrls) break;
-          if (seen.has(loc)) continue;
-          let path = "";
-          try {
-            if (!isSameDomain(loc, domain)) continue;
-            path = new URL(loc).pathname.replace(/\/$/, ""); // strip trailing slash for slug matching
-          } catch {
-            continue;
+        sitemapFiles++;
+        const isIndex = /<sitemapindex[\s>]/i.test(sm);
+        const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
+        if (isIndex) {
+          // Nested sitemap index → queue child sitemaps (recursive follow).
+          for (const child of locs) {
+            if (sitemapQueue.length >= AGENT_CONFIG.maxSitemapFiles * 2) break;
+            try {
+              if (!isSameDomain(child, domain)) continue;
+            } catch {
+              continue;
+            }
+            if (!seenSitemaps.has(child)) sitemapQueue.push(child);
           }
-          // Only program / scholarship / requirements / tuition-like URLs.
-          const interesting =
-            /(^|\/)(courses?|programs?|programmes?)\/.+[a-z0-9]+(-[a-z0-9]+)+[^/]*$/.test(path) ||
-            /(^|\/)(scholarship|scholarships|bursaries?)\//.test(path) ||
-            /(^|\/)(entry-requirements|requirements|tuition|fees-and-funding)\//.test(path);
-          if (!interesting) continue;
-          const reason = rejectSourceReason(loc);
-          if (reason) continue;
-          seen.add(loc);
-          discovered.push({ url: loc, title: loc, type: classifyLink(loc, "") });
-          sitemapAdded++;
+        } else {
+          for (const loc of locs) {
+            if (sitemapAdded >= AGENT_CONFIG.maxSitemapUrls) break;
+            if (seen.has(loc)) continue;
+            let path = "";
+            try {
+              if (!isSameDomain(loc, domain)) continue;
+              path = new URL(loc).pathname.replace(/\/$/, ""); // strip trailing slash for slug matching
+            } catch {
+              continue;
+            }
+            // Only program / scholarship / requirements / tuition-like URLs.
+            const interesting =
+              /(^|\/)(courses?|programs?|programmes?)\/.+[a-z0-9]+(-[a-z0-9]+)+[^/]*$/.test(path) ||
+              /(^|\/)(scholarship|scholarships|bursaries?)\//.test(path) ||
+              /(^|\/)(entry-requirements|requirements|tuition|fees-and-funding)\//.test(path);
+            if (!interesting) continue;
+            const reason = rejectSourceReason(loc);
+            if (reason) continue;
+            seen.add(loc);
+            discovered.push({ url: loc, title: loc, type: classifyLink(loc, "") });
+            sitemapAdded++;
+          }
         }
         await sleep(AGENT_CONFIG.fetchDelayMs);
       }
+      if (sitemapFiles > 0) progress(`Sitemap discovery done: ${sitemapFiles} file(s), ${sitemapAdded} URL(s) added.`);
     }
 
-    // Course hubs are crawled ONE level to discover real program pages
-    // (hub pages themselves are discovery-only, never programs — spec §7).
-    // Queue-based: hubs discovered while crawling hubs are crawled too
-    // (e.g. /study/ → /study/courses/ → program pages).
+    // STEP C.3 — course hubs AND course-listing pages are crawled to discover
+    // real program pages (hub/listing pages themselves are discovery-only,
+    // never programs — spec §7). Queue-based, capped.
+    // Hubs:   /study/ /courses/ /programmes/ ...
+    // Listing: /courses/undergraduate/ /courses/postgraduate/ ... (last
+    //          segment is a generic degree-level word).
     const HUB_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?|study)\/?$/;
+    const LISTING_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?)\/+(undergraduate|postgraduate|taught|research|foundation|short-courses?|part-time|full-time)\/?$/;
+    const isListingPage = (url: string) => {
+      try {
+        const path = new URL(url).pathname;
+        return LISTING_PATH_RE.test(path) && path !== "/" && url !== home?.url;
+      } catch {
+        return false;
+      }
+    };
     const isHub = (url: string) => {
       try {
         return HUB_PATH_RE.test(new URL(url).pathname) && url !== home?.url;
@@ -268,13 +327,13 @@ export async function runUniversity(
         return false;
       }
     };
-    const hubQueue = discovered.filter((d) => isHub(d.url)).slice(0, AGENT_CONFIG.maxHubPages);
-    const hubCrawled = new Set<string>();
-    while (hubQueue.length > 0 && hubCrawled.size < AGENT_CONFIG.maxHubPages) {
-      const hub = hubQueue.shift()!;
-      if (hubCrawled.has(hub.url)) continue;
-      hubCrawled.add(hub.url);
-      progress(`Crawling course hub ${hub.url} for program links (discovery only)...`);
+    const crawlQueue = discovered.filter((d) => isHub(d.url) || isListingPage(d.url)).slice(0, AGENT_CONFIG.maxHubPages);
+    const crawlDone = new Set<string>();
+    while (crawlQueue.length > 0 && crawlDone.size < AGENT_CONFIG.maxHubPages) {
+      const hub = crawlQueue.shift()!;
+      if (crawlDone.has(hub.url)) continue;
+      crawlDone.add(hub.url);
+      progress(`Crawling course hub/listing ${hub.url} for program links (discovery only)...`);
       const html = await fetchPage(hub.url);
       if (!html) continue;
       for (const link of extractLinks(html, hub.url)) {
@@ -288,29 +347,151 @@ export async function runUniversity(
         seen.add(link);
         const type = classifyLink(link, "");
         discovered.push({ url: link, title: link, type });
-        if (isHub(link) && hubCrawled.size < AGENT_CONFIG.maxHubPages) hubQueue.push({ url: link, title: link, type });
+        if ((isHub(link) || isListingPage(link)) && crawlDone.size < AGENT_CONFIG.maxHubPages) {
+          crawlQueue.push({ url: link, title: link, type });
+        }
+      }
+      // JSON-LD structured data on hubs (ItemList/Course) — common on course
+      // search pages that expose NO static program anchors (spec §6 G).
+      const ldBlocks = [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
+      for (const [, raw] of ldBlocks) {
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(raw.trim());
+        } catch {
+          continue;
+        }
+        const walk = (node: any, depth: number) => {
+          if (!node || typeof node !== "object" || depth > 6) return;
+          if (Array.isArray(node)) {
+            for (const item of node) walk(item, depth + 1);
+            return;
+          }
+          const types = Array.isArray(node["@type"]) ? node["@type"] : node["@type"] ? [node["@type"]] : [];
+          const typeStr = types.map(String).join(" ");
+          const isCourseLike = /course|program|degree/i.test(typeStr) && !/courselist/i.test(typeStr);
+          const isScholarshipLike = /scholarship|bursar|financialaid/i.test(typeStr);
+          if ((isCourseLike || isScholarshipLike) && typeof node.url === "string") {
+            let resolved: string;
+            try {
+              resolved = new URL(node.url, hub.url).toString();
+              if (!isSameDomain(resolved, domain)) return;
+            } catch {
+              return;
+            }
+            if (rejectSourceReason(resolved)) return;
+            if (seen.has(resolved)) return;
+            seen.add(resolved);
+            discovered.push({
+              url: resolved,
+              title: typeof node.name === "string" ? node.name : resolved,
+              type: classifyLink(resolved, typeof node.name === "string" ? node.name : ""),
+            });
+            progress(`Hub JSON-LD discovery: ${node.name || resolved}`);
+          }
+          for (const key of ["hasCourse", "itemListElement", "mainEntity", "about", "offers", "provider"]) {
+            walk(node[key], depth + 1);
+          }
+        };
+        walk(parsed, 0);
       }
       await sleep(AGENT_CONFIG.fetchDelayMs);
     }
 
+    // STEP C.4 — search fallback (spec §7, §8): if the DB carried no program
+    // URLs and no program page was discovered, query the search provider for
+    // each DB program name. Only same-domain results are accepted (validated
+    // later by classify/validate). When no web-search provider is configured
+    // this logs a review note instead of guessing.
+    const programPagesFound = discovered.some((d) => d.type === "program");
+    if (!programPagesFound && scopes.includes("programs") && current.programs.length > 0) {
+      progress("No program page discovered — attempting site search fallback...");
+      for (const prog of current.programs.slice(0, 3)) {
+        const q = `"${prog.name}" ${universityName} site:${domain}`;
+        const results = await provider.search(q);
+        if (results.length === 0) {
+          reviewRequired.push({
+            entity: "program", field: "discovery", action: "review", dbValue: null, newValue: null,
+            sourceUrl: "", reason: `program search fallback returned nothing for '${prog.name}' — no web-search provider configured (RESEARCH_SEARCH_ENDPOINT/KEY) or no results`,
+          });
+          progress(`Search fallback: no results for '${prog.name}' (provider returned nothing)`);
+          continue;
+        }
+        for (const r of results.slice(0, 5)) {
+          if (seen.has(r.url)) continue;
+          try {
+            if (!isSameDomain(r.url, domain)) continue;
+          } catch {
+            continue;
+          }
+          if (rejectSourceReason(r.url)) continue;
+          seen.add(r.url);
+          discovered.push({ url: r.url, title: r.title || r.url, type: classifyLink(r.url, r.title || "") });
+          progress(`Search fallback candidate: ${r.url}`);
+        }
+        await sleep(AGENT_CONFIG.fetchDelayMs);
+      }
+    }
+    const scholarshipPagesFound = discovered.some((d) => d.type === "scholarship");
+    if (!scholarshipPagesFound && scopes.includes("scholarships")) {
+      progress("No scholarship page discovered — attempting scholarship search fallback...");
+      const q = `${universityName} scholarship site:${domain}`;
+      const results = await provider.search(q);
+      if (results.length === 0) {
+        reviewRequired.push({
+          entity: "scholarship", field: "discovery", action: "review", dbValue: null, newValue: null,
+          sourceUrl: "", reason: "scholarship search fallback returned nothing — no web-search provider configured or no results",
+        });
+      } else {
+        for (const r of results.slice(0, 5)) {
+          if (seen.has(r.url)) continue;
+          try {
+            if (!isSameDomain(r.url, domain)) continue;
+          } catch {
+            continue;
+          }
+          if (rejectSourceReason(r.url)) continue;
+          if (!/(scholarship|bursar|funding)/i.test(r.url)) continue;
+          seen.add(r.url);
+          discovered.push({ url: r.url, title: r.title || r.url, type: classifyLink(r.url, r.title || "") });
+          progress(`Scholarship search fallback candidate: ${r.url}`);
+        }
+      }
+    }
+
     // Program-priority ordering: real program pages and tuition/requirements
     // pages are fetched FIRST so the page cap never starves them.
-    discovered.sort((a, b) => {
-      const rank = (d: { type: string }) =>
-        d.type === "program" ? 0
-        : d.type === "tuition" || d.type === "requirements" ? 1
-        : d.type === "deadline" || d.type === "scholarship" || d.type === "living_costs" ? 2
-        : d.type === "homepage" ? 3
-        : 4;
-      return rank(a) - rank(b);
-    });
+    const rankOf = (d: { type: string }) =>
+      d.type === "program" ? 0
+      : d.type === "tuition" || d.type === "requirements" ? 1
+      : d.type === "deadline" || d.type === "scholarship" || d.type === "living_costs" ? 2
+      : d.type === "homepage" ? 3
+      : 4;
+    discovered.sort((a, b) => rankOf(a) - rankOf(b));
 
-    // STEP D — fetch pages (capped, deduped) (spec §3D, §21).
-    // Main-content extraction: nav/footer/sidebar is removed before any
-    // classification or field extraction (spec §23, §10).
+    // STEP D — fetch pages (capped, deduped) with DYNAMIC discovery expansion
+    // (spec §3D, §6): each fetched page may add new URLs via JSON-LD
+    // structured data, canonical links and listing-page anchors. Queue stays
+    // priority-ordered so program pages are never starved by the page cap.
     const pages: { url: string; title: string; type: string; text: string; structure: PageStructure }[] = [];
     const fetched = new Set<string>();
-    for (const d of discovered.slice(0, maxPages)) {
+    const fetchQueue = [...discovered];
+    let queueBaseLen = fetchQueue.length;
+    const addDiscovered = (url: string, title: string): boolean => {
+      if (seen.has(url)) return false;
+      try {
+        if (!isSameDomain(url, domain)) return false;
+      } catch {
+        return false;
+      }
+      if (rejectSourceReason(url)) return false;
+      seen.add(url);
+      const type = classifyLink(url, title);
+      discovered.push({ url, title, type });
+      return true;
+    };
+    while (fetchQueue.length > 0 && pages.length < maxPages) {
+      const d = fetchQueue.shift()!;
       if (fetched.has(d.url)) continue;
       // Defense in depth: never fetch assets that slipped past discovery.
       if (!isResearchSourceUrl(d.url)) continue;
@@ -321,6 +502,72 @@ export async function runUniversity(
       const structure = extractPageStructure(html);
       if (structure.fullText.length < 80) continue; // too short / PDF unparsed
       pages.push({ ...d, text: structure.mainText, structure });
+
+      // Expansion A — JSON-LD structured data (Course/Scholarship entities).
+      const ldBlocks = [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
+      for (const [, raw] of ldBlocks) {
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(raw.trim());
+        } catch {
+          continue;
+        }
+        const walk = (node: any, depth: number) => {
+          if (!node || typeof node !== "object" || depth > 6) return;
+          if (Array.isArray(node)) {
+            for (const item of node) walk(item, depth + 1);
+            return;
+          }
+          const types = Array.isArray(node["@type"]) ? node["@type"] : node["@type"] ? [node["@type"]] : [];
+          const typeStr = types.map(String).join(" ");
+          const isCourseLike = /course|program|degree/i.test(typeStr) && !/courselist/i.test(typeStr);
+          const isScholarshipLike = /scholarship|bursar|financialaid/i.test(typeStr);
+          if ((isCourseLike || isScholarshipLike) && typeof node.url === "string") {
+            let resolved: string;
+            try {
+              resolved = new URL(node.url, d.url).toString();
+            } catch {
+              return;
+            }
+            if (addDiscovered(resolved, typeof node.name === "string" ? node.name : resolved)) {
+              progress(`JSON-LD discovery: ${node.name || resolved}`);
+            }
+          }
+          for (const key of ["hasCourse", "itemListElement", "mainEntity", "about", "offers", "provider"]) {
+            walk(node[key], depth + 1);
+          }
+        };
+        walk(parsed, 0);
+      }
+
+      // Expansion B — canonical link (same-domain, different from page URL).
+      const canonM = /<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i.exec(html);
+      if (canonM && canonM[1] && canonM[1].trim() !== d.url) {
+        const canon = new URL(canonM[1].trim(), d.url).toString();
+        if (isSameDomain(canon, domain) && addDiscovered(canon, d.title)) {
+          progress(`Canonical discovery: ${canon}`);
+        }
+      }
+
+      // Expansion C — listing-page anchors (breadth-first program discovery).
+      if (isListingPage(d.url)) {
+        for (const link of extractLinks(html, d.url).slice(0, maxPages * 4)) {
+          if (seen.has(link)) continue;
+          const reason = rejectSourceReason(link);
+          if (reason) {
+            seen.add(link);
+            rejectedSources.push({ url: link, reason });
+            continue;
+          }
+          if (addDiscovered(link, link)) progress(`Listing discovery: ${link}`);
+        }
+      }
+
+      if (discovered.length > queueBaseLen) {
+        for (let i = queueBaseLen; i < discovered.length; i++) fetchQueue.push(discovered[i]);
+        queueBaseLen = discovered.length;
+      }
+      fetchQueue.sort((a, b) => rankOf(a) - rankOf(b));
       await sleep(AGENT_CONFIG.fetchDelayMs);
     }
 
@@ -728,8 +975,22 @@ export async function runUniversity(
             await upsertProgram(universityId, prog, p.url);
           }
         } else {
-          progress(`New program found: '${name}' — would insert`);
+          // Spec §1/§2: every insert is fully explained — entity, name,
+          // fields, source URL/title/category, confidence, reason.
+          progress(`New program found: '${name}' — would insert (${p.url})`);
           insertedPrograms.push(name);
+          insertedEntities.push({
+            entity: "program",
+            name,
+            fields: ["name", ...(newTuition != null ? ["annual_tuition", "tuition_currency"] : [])],
+            oldValue: null,
+            newValue: name,
+            sourceUrl: p.url,
+            sourceTitle: p.title || p.url,
+            sourceType: `official_${p.type}`,
+            confidence: 0.9,
+            reason: "INSERT — validated program page (program URL structure + program title + degree/course content) not present in DB",
+          });
           if (!dryRun) {
             const res = await upsertProgram(universityId, prog, p.url);
             if (!res.inserted) duplicatesPrevented += 1;
@@ -858,11 +1119,33 @@ export async function runUniversity(
             reason: "CASE B: unchanged — application deadline already in DB",
           });
           progress(`Application deadline ${cycle.deadline} already in DB — SKIPPED (unchanged)`);
+        } else if (deadlineEv.confidence < 0.7) {
+          // Spec §2: no unspecified inserts — weak deadline evidence → review.
+          reviewRequired.push({
+            entity: "application_cycle", field: "deadline", action: "review",
+            dbValue: null, newValue: cycle.deadline,
+            sourceUrl: deadlineEv.sourceUrl, sourceTitle: deadlineEv.sourceTitle,
+            sourceType: deadlineEv.sourceType, confidence: deadlineEv.confidence,
+            reason: "REVIEW_REQUIRED — deadline evidence confidence below 0.7; not inserted",
+          });
+          progress(`Application deadline ${cycle.deadline} — REVIEW_REQUIRED (confidence ${deadlineEv.confidence.toFixed(2)} < 0.7)`);
         } else {
           insertedCycles.push(`${cycle.applicationType || "Application"} ${cycle.deadline}`);
+          insertedEntities.push({
+            entity: "application_cycle",
+            name: `${cycle.applicationType || "Application"} ${cycle.deadline}`,
+            fields: ["deadline", ...(cycle.academicYear ? ["academic_year"] : []), ...(cycle.applicationFee != null ? ["application_fee", "application_fee_currency"] : [])],
+            oldValue: null,
+            newValue: cycle.deadline,
+            sourceUrl: deadlineEv.sourceUrl,
+            sourceTitle: deadlineEv.sourceTitle || deadlineEv.sourceUrl,
+            sourceType: deadlineEv.sourceType,
+            confidence: deadlineEv.confidence,
+            reason: "INSERT — deadline not present in DB; evidence from official page",
+          });
           progress(`Application deadline ${cycle.deadline} — would insert`);
         }
-        if (!dryRun && !existing) {
+        if (!dryRun && !existing && deadlineEv.confidence >= 0.7) {
           const res = await upsertCycle(universityId, cycle, deadlineEv.sourceUrl);
           if (!res.inserted) duplicatesPrevented += 1;
         }
@@ -901,8 +1184,38 @@ export async function runUniversity(
             if (!res.inserted) duplicatesPrevented += 1;
           }
         } else {
+          // Spec §2/§11/§12: a scholarship is proposed ONLY when the page has
+          // scholarship-specific evidence — award amount, eligibility,
+          // deadline, number of awards, or application instructions.
+          const hasScholarshipEvidence =
+            /(award(ed|s)? (of|up to|worth)|eligib\w+|deadline|number of awards?|how to apply|application (process|instructions)|funding (of|up to)|per year|recipient)/i.test(
+              p.structure.mainTextNoLinks || p.text
+            );
+          if (!hasScholarshipEvidence) {
+            reviewRequired.push({
+              entity: "scholarship", field: "title", action: "review",
+              dbValue: null, newValue: title,
+              sourceUrl: p.url, sourceTitle: p.title || p.url, sourceType: `official_${p.type}`,
+              confidence: t?.confidence ?? 0.5,
+              reason: "REVIEW_REQUIRED — scholarship-classified page lacks award/eligibility/deadline/application evidence; not inserted",
+            });
+            progress(`Scholarship '${title}' — REVIEW_REQUIRED (no award/eligibility/deadline evidence on page)`);
+            continue;
+          }
           insertedScholarships.push(title);
-          progress(`Scholarship '${title}' — would insert`);
+          insertedEntities.push({
+            entity: "scholarship",
+            name: title,
+            fields: ["title", "website_url", ...(t ? ["amount", "currency"] : [])],
+            oldValue: null,
+            newValue: title,
+            sourceUrl: p.url,
+            sourceTitle: p.title || p.url,
+            sourceType: `official_${p.type}`,
+            confidence: t?.confidence ?? 0.8,
+            reason: "INSERT — scholarship-classified official page with award/eligibility/deadline evidence; not in DB",
+          });
+          progress(`Scholarship '${title}' — would insert (evidence present)`);
           if (!dryRun) {
             const res = await upsertScholarship(sch, p.url);
             if (!res.inserted) duplicatesPrevented += 1;
@@ -1019,7 +1332,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
+      insertedEntities, newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
     });
     progress("Audit complete.");
     await logRunFinish(logId, report);
@@ -1030,7 +1343,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
+      insertedEntities, newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
     });
     await logRunFinish(logId, report, String(err?.message || err));
     return report;
