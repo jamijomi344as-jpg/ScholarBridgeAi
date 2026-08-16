@@ -2,7 +2,8 @@
  * Orchestrator for a single university (spec §3, §18, §20, §21, §23).
  */
 import { AGENT_CONFIG } from "./config";
-import { fetchPageText, extractLinks, htmlToText, sleep } from "./fetch";
+import { fetchPageText, fetchHomepage, extractLinks, htmlToText, sleep } from "./fetch";
+import { resolveOfficialDomain, pickOfficialDomainFromSearch } from "./domain";
 import {
   classifyLink,
   extractMoney,
@@ -59,17 +60,29 @@ export async function runUniversity(
     if (current.university) universityName = current.university.name || universityName;
     else progress("WARNING: university row not found — continuing with discovery only.");
 
-    // STEP B — discover official domain (spec §3B)
-    const officialUrl = current.university?.official_website_url || current.university?.website_url;
-    let domain: string | null = null;
-    if (officialUrl) {
-      try {
-        domain = new URL(officialUrl).hostname;
-      } catch {
-        domain = null;
+    // STEP B — discover official domain (spec §3B).
+    // Priority: officialWebsiteUrl → official_website_url → websiteUrl →
+    // website_url → admissionsUrl → internationalAdmissionsUrl →
+    // undergraduateAdmissionsUrl → applicationUrl (generic, never by name).
+    // Only when the DB row has no usable URL is the search provider consulted.
+    const fetchPage = async (url: string) => await fetchPageText(url);
+    const resolved = resolveOfficialDomain(current.university);
+    let domain: string | null = resolved?.domain ?? null;
+    let officialUrl: string | null = resolved?.url ?? null;
+
+    if (!domain && current.university?.name) {
+      progress("No official URL in database — searching for the official domain...");
+      const search = createSearchProvider(fetchPage, []);
+      const results = await search.search(`${current.university.name} official website`);
+      const found = pickOfficialDomainFromSearch(results, current.university.name);
+      if (found) {
+        domain = found.domain;
+        officialUrl = found.url;
+        reviewRequired.push("official_domain_from_search"); // human check before trust
       }
     }
-    if (!domain) {
+
+    if (!domain || !officialUrl) {
       progress("No official domain found — cannot research authoritatively.");
       reviewRequired.push("official_domain_missing");
       const report = buildReport({
@@ -82,7 +95,20 @@ export async function runUniversity(
     }
     progress(`Official domain: ${domain}`);
 
-    const fetchPage = async (url: string) => await fetchPageText(url);
+    // Record the resolved official URL as evidence (persisted as a source in
+    // non-dry runs; never overwrites DB values).
+    if (scopes.includes("university") || scopes.includes("sources")) {
+      evidence.push({
+        field: "official_domain",
+        value: officialUrl,
+        sourceUrl: officialUrl,
+        sourceTitle: "Official website",
+        sourceType: "official_university",
+        exactEvidence: "Resolved from database URL fields",
+        confidence: 1,
+      });
+    }
+
     const provider = createSearchProvider(fetchPage, [domain]);
 
     // STEP C — discover official pages (spec §3C)
@@ -106,7 +132,7 @@ export async function runUniversity(
 
     // Also scan homepage links (breadth-first, capped).
     progress("Scanning official homepage links...");
-    const homeHtml = await fetchPage(`https://${domain}/`);
+    const homeHtml = await fetchHomepage(domain);
     if (homeHtml) {
       for (const link of extractLinks(homeHtml, `https://${domain}/`).slice(0, maxPages * 3)) {
         if (seen.has(link) || discovered.length >= maxPages * 2) continue;

@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
+import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
 
 interface UniversitiesManagerProps {
   adminProfileId: number;
@@ -22,16 +23,16 @@ interface UniversityRow {
   country: string;
   city: string;
   flagEmoji: string;
-  worldRanking: number;
+  worldRanking: number | null;
   degreeLevel: string;
   programMajor: string;
-  annualTuitionUsd: number;
-  annualLivingEstUsd: number;
-  minGpa: number;
-  minIelts: number;
+  annualTuitionUsd: number | null;
+  annualLivingEstUsd: number | null;
+  minGpa: number | null;
+  minIelts: number | null;
   minSat: number | null;
-  acceptanceRate: number;
-  postStudyWorkVisaYears: number;
+  acceptanceRate: number | null;
+  postStudyWorkVisaYears: number | null;
   description: string;
   highlights: string;
   websiteUrl: string;
@@ -120,16 +121,16 @@ export function UniversitiesManager({ adminProfileId }: UniversitiesManagerProps
       country: u.country,
       city: u.city,
       flagEmoji: u.flagEmoji,
-      worldRanking: String(u.worldRanking),
+      worldRanking: u.worldRanking == null ? "" : String(u.worldRanking),
       degreeLevel: u.degreeLevel,
       programMajor: u.programMajor,
-      annualTuitionUsd: String(u.annualTuitionUsd),
-      annualLivingEstUsd: String(u.annualLivingEstUsd),
-      minGpa: String(u.minGpa),
-      minIelts: String(u.minIelts),
+      annualTuitionUsd: u.annualTuitionUsd == null ? "" : String(u.annualTuitionUsd),
+      annualLivingEstUsd: u.annualLivingEstUsd == null ? "" : String(u.annualLivingEstUsd),
+      minGpa: u.minGpa == null ? "" : String(u.minGpa),
+      minIelts: u.minIelts == null ? "" : String(u.minIelts),
       minSat: u.minSat == null ? "" : String(u.minSat),
-      acceptanceRate: String(u.acceptanceRate),
-      postStudyWorkVisaYears: String(u.postStudyWorkVisaYears),
+      acceptanceRate: u.acceptanceRate == null ? "" : String(u.acceptanceRate),
+      postStudyWorkVisaYears: u.postStudyWorkVisaYears == null ? "" : String(u.postStudyWorkVisaYears),
       description: u.description,
       highlights: u.highlights,
       websiteUrl: u.websiteUrl,
@@ -343,9 +344,9 @@ export function UniversitiesManager({ adminProfileId }: UniversitiesManagerProps
                       <div className="text-[11px] text-slate-500">{u.city} · {u.programMajor}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{u.country}</td>
-                    <td className="px-4 py-3 text-slate-600">#{u.worldRanking}</td>
-                    <td className="px-4 py-3 text-slate-600">${u.annualTuitionUsd.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-slate-600">{u.acceptanceRate}%</td>
+                    <td className="px-4 py-3 text-slate-600">#{formatNumber(u.worldRanking, { placeholder: "—" })}</td>
+                    <td className="px-4 py-3 text-slate-600">{formatMoney(u.annualTuitionUsd, "USD")}</td>
+                    <td className="px-4 py-3 text-slate-600">{formatPercent(u.acceptanceRate)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
                         <button

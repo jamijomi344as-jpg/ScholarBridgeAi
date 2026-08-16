@@ -16,6 +16,7 @@ import {
   Filter,
   AlertCircle
 } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 export interface Scholarship {
   id: number;
@@ -23,7 +24,7 @@ export interface Scholarship {
   provider: string;
   country: string;
   coverageType: string;
-  amountUsdValue: number;
+  amountUsdValue: number | null;
   deadline: string;
   degreeLevels: string;
   eligibleMajors: string;
@@ -248,7 +249,7 @@ export function ScholarshipHub({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] bg-slate-50 p-3 rounded-xl border border-slate-100">
                   <div>
                     <span className="text-slate-400 block font-medium">Award Value:</span>
-                    <strong className="text-emerald-700 font-extrabold">${s.amountUsdValue?.toLocaleString()} / yr</strong>
+                    <strong className="text-emerald-700 font-extrabold">{formatMoney(s.amountUsdValue, "USD", { suffix: " / yr" })}</strong>
                   </div>
 
                   <div>

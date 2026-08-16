@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Clock
 } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 export interface SavedUniversityItem {
   id: number;
@@ -161,7 +162,7 @@ export function ApplicationTracker({
 
                       <div className="text-xs text-slate-600 flex flex-wrap items-center gap-3">
                         <span>🎓 {u.programMajor}</span>
-                        <span>💵 Tuition: ${(u.annualTuitionUsd || 0).toLocaleString()}/yr</span>
+                        <span>💵 Tuition: {formatMoney(u.annualTuitionUsd, "USD", { suffix: "/yr" })}</span>
                         <span>📍 {u.city}, {u.country}</span>
                       </div>
 
@@ -233,7 +234,7 @@ export function ApplicationTracker({
 
                       <div className="flex items-center gap-2">
                         <a
-                          href={u.websiteUrl}
+                          href={u.websiteUrl ?? undefined}
                           target="_blank"
                           rel="noreferrer"
                           className="p-2 text-slate-400 hover:text-slate-600 bg-slate-100 rounded-xl"
@@ -289,7 +290,7 @@ export function ApplicationTracker({
                       </div>
 
                       <div className="text-xs text-slate-600 flex flex-wrap items-center gap-3">
-                        <span>💰 Value: ${(s.amountUsdValue || 0).toLocaleString()}/yr</span>
+                        <span>💰 Value: {formatMoney(s.amountUsdValue, "USD", { suffix: "/yr" })}</span>
                         <span>💵 Type: {s.coverageType}</span>
                         <span>📅 Deadline: {s.deadline}</span>
                       </div>

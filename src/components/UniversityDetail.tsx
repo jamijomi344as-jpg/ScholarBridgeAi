@@ -19,6 +19,7 @@ import {
   Award,
   ArrowRight,
 } from "lucide-react";
+import { formatMoney, formatCount, formatNumber } from "@/lib/format";
 
 interface UniversityDetailData {
   id: number;
@@ -26,7 +27,7 @@ interface UniversityDetailData {
   country: string;
   city: string;
   flagEmoji: string;
-  worldRanking: number;
+  worldRanking: number | null;
   universityType: string | null;
   foundedYear: number | null;
   address: string | null;
@@ -130,16 +131,9 @@ interface UniversityDetailProps {
 }
 
 /** Spec §19: verified vs unavailable. NULL is never shown as a value. */
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: "$", GBP: "£", EUR: "€", CHF: "CHF ", CAD: "C$", AUD: "A$",
-  HKD: "HK$", SGD: "S$", JPY: "¥", KRW: "₩", UZS: "so'm ",
-};
-
 /** Format money generically for any currency — never assume USD. */
 function fmtMoney(v: number | null | undefined, currency = "USD", period = "year"): string {
-  if (v == null) return "Not available";
-  const sym = CURRENCY_SYMBOLS[currency] || `${currency} `;
-  return `${sym}${v.toLocaleString()} / ${period}`;
+  return formatMoney(v, currency, { suffix: ` / ${period}`, placeholder: "Not available" });
 }
 
 function fmtValue(v: string | number | null | undefined, suffix = ""): string {
@@ -285,7 +279,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
               <div className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white/10 border border-white/15 px-3 py-1.5">
                 <Star className="h-4 w-4 fill-amber-300 text-amber-300" />
                 <span className="text-xs font-bold">QS World Ranking 2027</span>
-                <span className="text-sm font-extrabold text-amber-300">#{uni.worldRanking}</span>
+                <span className="text-sm font-extrabold text-amber-300">#{formatNumber(uni.worldRanking, { placeholder: "—" })}</span>
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:items-end">
@@ -414,11 +408,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
                   <div>
                     <span className="text-slate-400 block">Application fee</span>
                     <strong className="text-slate-800">
-                      {c.applicationFee != null
-                        ? c.applicationFeeCurrency === "USD"
-                          ? `$${c.applicationFee.toLocaleString()}`
-                          : `${c.applicationFee} ${c.applicationFeeCurrency}`
-                        : "Not specified"}
+                      {formatMoney(c.applicationFee, c.applicationFeeCurrency)}
                     </strong>
                   </div>
                   <div>
@@ -626,7 +616,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
                   <p className="text-sm font-extrabold text-slate-800">{schName}</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">{sch.coverageType || "Coverage not specified"}</p>
                   <div className="mt-2 space-y-1 text-[11px] text-slate-600">
-                    <p><b>Amount:</b> {sch.amountUsdValue != null ? `$${sch.amountUsdValue.toLocaleString()}` : "Not specified"}</p>
+                    <p><b>Amount:</b> {formatMoney(sch.amountUsdValue, "USD")}</p>
                     <p><b>Deadline:</b> {deadline ? new Date(deadline + (deadline.length === 10 ? "T00:00:00" : "")).toLocaleDateString() : "Not announced"}</p>
                     <p><b>Eligibility:</b> {sch.eligibilityText || "Not specified"}</p>
                   </div>
@@ -669,7 +659,7 @@ export function UniversityDetail({ universityId, onBack }: UniversityDetailProps
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Field
             label="International students"
-            value={uni.internationalStudentsCount != null ? uni.internationalStudentsCount.toLocaleString() : "Not available"}
+            value={formatCount(uni.internationalStudentsCount, { placeholder: "Not available" })}
           />
           <Field
             label="Share of students"

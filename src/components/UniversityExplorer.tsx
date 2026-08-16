@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { StudentProfile } from "./Navbar";
 import { UniversityDetail } from "./UniversityDetail";
+import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
 import { 
   Search, 
   Globe, 
@@ -30,22 +31,22 @@ export interface University {
   country: string;
   city: string;
   flagEmoji: string;
-  worldRanking: number;
+  worldRanking: number | null;
   degreeLevel: string;
   programMajor: string;
-  annualTuitionUsd: number;
-  annualLivingEstUsd: number;
-  minGpa: number;
-  minIelts: number;
+  annualTuitionUsd: number | null;
+  annualLivingEstUsd: number | null;
+  minGpa: number | null;
+  minIelts: number | null;
   minSat?: number | null;
-  acceptanceRate: number;
-  postStudyWorkVisaYears: number;
-  description: string;
-  highlights: string;
-  websiteUrl: string;
-  imageUrl: string;
-  matchScore?: number;
-  matchCategory?: "Reach" | "Match" | "Safety";
+  acceptanceRate: number | null;
+  postStudyWorkVisaYears: number | null;
+  description: string | null;
+  highlights: string | null;
+  websiteUrl: string | null;
+  imageUrl: string | null;
+  matchScore?: number | null;
+  matchCategory?: "Reach" | "Match" | "Safety" | null;
   matchReasons?: string[];
   matchIssues?: string[];
 }
@@ -236,7 +237,7 @@ export function UniversityExplorer({
           <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex flex-col justify-center">
             <div className="flex justify-between items-center text-[11px] font-semibold text-slate-700">
               <span>Max Tuition:</span>
-              <span className="text-indigo-600 font-bold">${(maxTuition || 0).toLocaleString()}/yr</span>
+              <span className="text-indigo-600 font-bold">${formatNumber(maxTuition, { placeholder: "0", suffix: "/yr" })}</span>
             </div>
             <input
               type="range"
@@ -292,7 +293,8 @@ export function UniversityExplorer({
 
             let highlightsList: string[] = [];
             try {
-              highlightsList = JSON.parse(uni.highlights);
+              const parsed = uni.highlights ? JSON.parse(uni.highlights) : [];
+              highlightsList = Array.isArray(parsed) ? parsed : [];
             } catch {
               highlightsList = [];
             }
@@ -304,26 +306,32 @@ export function UniversityExplorer({
               >
                 {/* Top Image Banner */}
                 <div className="relative h-40 w-full overflow-hidden bg-slate-100">
-                  <img
-                    src={uni.imageUrl}
-                    alt={`${uni.name} — ${uni.city}, ${uni.country}`}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
+                  {uni.imageUrl ? (
+                    <img
+                      src={uni.imageUrl}
+                      alt={`${uni.name} — ${uni.city}, ${uni.country}`}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-5xl select-none">
+                      {uni.flagEmoji || "🎓"}
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
 
                   {/* Match Score Badge */}
                   <div className="absolute top-3 left-3 flex items-center gap-1.5">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold border shadow-xs ${matchBadgeColor}`}>
-                      {uni.matchScore}% Match • {uni.matchCategory}
+                      {uni.matchScore != null ? `${uni.matchScore}% Match` : "Match data unavailable"} • {uni.matchCategory ?? "—"}
                     </span>
                   </div>
 
                   {/* World Rank Badge */}
                   <div className="absolute top-3 right-3 bg-slate-900/80 text-amber-300 text-[11px] font-bold px-2.5 py-1 rounded-full backdrop-blur-md border border-white/10 flex items-center gap-1">
                     <Star className="h-3 w-3 fill-amber-300" />
-                    World #{uni.worldRanking ?? '—'}
+                    World #{formatNumber(uni.worldRanking, { placeholder: "—" })}
                   </div>
 
                   {/* Title & Country Overlay */}
@@ -348,23 +356,23 @@ export function UniversityExplorer({
                       {uni.description}
                     </p>
 
-                    {/* Key Requirements Grid — NULL = Not available (spec §19) */}
+                    {/* Key Requirements Grid — NULL = Not specified (spec §19) */}
                     <div className="grid grid-cols-2 gap-2 my-3 text-[11px] bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                       <div>
                         <span className="text-slate-400 block">Annual Tuition:</span>
-                        <strong className="text-slate-900">{uni.annualTuitionUsd != null ? `$${uni.annualTuitionUsd.toLocaleString()}` : "Not available"}</strong>
+                        <strong className="text-slate-900">{formatMoney(uni.annualTuitionUsd, "USD")}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Living Est.:</span>
-                        <strong className="text-slate-900">{uni.annualLivingEstUsd != null ? `$${uni.annualLivingEstUsd.toLocaleString()}/yr` : "Not available"}</strong>
+                        <strong className="text-slate-900">{formatMoney(uni.annualLivingEstUsd, "USD", { suffix: "/yr" })}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Min GPA:</span>
-                        <strong className="text-slate-900">{uni.minGpa != null ? `${uni.minGpa} / 4.0` : "Not specified"}</strong>
+                        <strong className="text-slate-900">{formatNumber(uni.minGpa, { decimals: 2, suffix: " / 4.0" })}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Min IELTS:</span>
-                        <strong className="text-slate-900">{uni.minIelts != null ? uni.minIelts : "Not specified"}</strong>
+                        <strong className="text-slate-900">{formatNumber(uni.minIelts, { decimals: 1 })}</strong>
                       </div>
                     </div>
 
@@ -404,7 +412,7 @@ export function UniversityExplorer({
                       <Briefcase className="h-3.5 w-3.5 text-indigo-600" />
                       Post-Study Work Visa:
                     </span>
-                    <strong className="text-slate-900 font-bold">{uni.postStudyWorkVisaYears != null ? `${uni.postStudyWorkVisaYears} Years` : "Not specified"}</strong>
+                    <strong className="text-slate-900 font-bold">{formatNumber(uni.postStudyWorkVisaYears, { suffix: " Years" })}</strong>
                   </div>
 
                   {/* Action Buttons */}
@@ -421,7 +429,7 @@ export function UniversityExplorer({
 
                     <div className="flex items-center gap-2">
                       <a
-                        href={uni.websiteUrl}
+                        href={uni.websiteUrl ?? undefined}
                         target="_blank"
                         rel="noreferrer"
                         className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-xl transition-colors"
@@ -500,49 +508,49 @@ export function UniversityExplorer({
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">World Ranking</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 font-bold text-indigo-600">#{u.worldRanking ?? '—'}</td>
+                      <td key={u.id} className="py-2.5 px-4 font-bold text-indigo-600">#{formatNumber(u.worldRanking, { placeholder: "—" })}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Match Score</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 font-bold text-emerald-600">{u.matchScore}% ({u.matchCategory})</td>
+                      <td key={u.id} className="py-2.5 px-4 font-bold text-emerald-600">{u.matchScore != null ? `${u.matchScore}%` : "—"} ({u.matchCategory ?? "—"})</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Annual Tuition</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900 font-bold">{u.annualTuitionUsd != null ? `$${u.annualTuitionUsd.toLocaleString()}` : "Not available"}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900 font-bold">{formatMoney(u.annualTuitionUsd, "USD")}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Living Expenses</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.annualLivingEstUsd != null ? `$${u.annualLivingEstUsd.toLocaleString()}/yr` : "Not available"}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{formatMoney(u.annualLivingEstUsd, "USD", { suffix: "/yr" })}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Post-Study Work Visa</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 font-bold text-amber-700">{u.postStudyWorkVisaYears ?? '—'} Years</td>
+                      <td key={u.id} className="py-2.5 px-4 font-bold text-amber-700">{formatNumber(u.postStudyWorkVisaYears, { placeholder: "—", suffix: " Years" })}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Min GPA Cutoff</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.minGpa != null ? `${u.minGpa} / 4.0` : "Not specified"}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{formatNumber(u.minGpa, { decimals: 2, suffix: " / 4.0" })}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Min IELTS Cutoff</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.minIelts != null ? u.minIelts : "Not specified"}</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{formatNumber(u.minIelts, { decimals: 1 })}</td>
                     ))}
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4 font-semibold text-slate-500">Acceptance Rate</td>
                     {comparedUniversities.map((u) => (
-                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{u.acceptanceRate ?? '—'}%</td>
+                      <td key={u.id} className="py-2.5 px-4 text-slate-900">{formatPercent(u.acceptanceRate, { placeholder: "—" })}</td>
                     ))}
                   </tr>
                 </tbody>

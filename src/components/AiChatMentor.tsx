@@ -13,6 +13,7 @@ import {
   Briefcase,
   Award
 } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 interface AiChatMentorProps {
   activeProfile: StudentProfile | null;
@@ -31,7 +32,7 @@ export function AiChatMentor({ activeProfile }: AiChatMentorProps) {
       sender: "ai",
       text: `Hello ${activeProfile?.name || "there"}! I'm **ScholarBridge AI**, your global study counselor. 
 
-I'm aware of your profile (**${activeProfile?.degreeLevel} in ${activeProfile?.targetMajor}**, GPA ${activeProfile?.gpa}/${activeProfile?.gpaScale}, budget $${activeProfile?.budgetAnnualUsd?.toLocaleString()}/yr).
+I'm aware of your profile (**${activeProfile?.degreeLevel} in ${activeProfile?.targetMajor}**, GPA ${activeProfile?.gpa}/${activeProfile?.gpaScale}, budget ${formatMoney(activeProfile?.budgetAnnualUsd, "USD", { suffix: "/yr", placeholder: "Not specified" })}).
 
 How can I help you today? Ask me about **work visas (OPT/PGWP/Graduate Route)**, **scholarship strategy**, **SOP advice**, or **university selections**!`,
     },

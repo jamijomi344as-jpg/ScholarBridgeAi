@@ -18,6 +18,7 @@ import {
   Zap,
   BookOpen
 } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 interface DashboardViewProps {
   profile: StudentProfile | null;
@@ -119,7 +120,7 @@ export function DashboardView({
                 🎓 Level: <strong className="text-white">{profile.degreeLevel}</strong>
               </span>
               <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-medium border border-white/10">
-                💰 Budget Limit: <strong className="text-emerald-300">${profile.budgetAnnualUsd?.toLocaleString()}/yr</strong>
+                💰 Budget Limit: <strong className="text-emerald-300">{formatMoney(profile.budgetAnnualUsd, "USD", { suffix: "/yr" })}</strong>
               </span>
               <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-medium border border-white/10">
                 🏆 Pubs/Work: <strong className="text-amber-300">{profile.researchPublications || 0} Pubs • {profile.workExperienceYears || 0} yrs Exp</strong>
@@ -342,7 +343,7 @@ export function DashboardView({
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                 <span className="font-medium text-slate-700">Annual Tuition Budget</span>
                 <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
-                  ${profile.budgetAnnualUsd?.toLocaleString()}
+                  {formatMoney(profile.budgetAnnualUsd, "USD")}
                 </span>
               </div>
 
@@ -368,7 +369,7 @@ export function DashboardView({
               Scholarship Match Guarantee
             </div>
             <p className="text-xs text-emerald-800 leading-relaxed">
-              Based on your budget constraint of **${profile.budgetAnnualUsd?.toLocaleString()}/yr**, you have 8+ fully and partially funded scholarship matches available!
+              Based on your budget constraint of **{formatMoney(profile.budgetAnnualUsd, "USD", { suffix: "/yr" })}**, you have 8+ fully and partially funded scholarship matches available!
             </p>
             <button
               onClick={() => onNavigateTab("scholarships")}

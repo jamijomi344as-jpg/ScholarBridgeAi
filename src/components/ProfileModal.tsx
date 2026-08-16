@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { StudentProfile } from "./Navbar";
 import { X, Save, Sparkles, DollarSign, BookOpen, Globe, Award } from "lucide-react";
+import { formatNumber } from "@/lib/format";
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -339,7 +340,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
                   />
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Current: ${formData.budgetAnnualUsd?.toLocaleString()}/year
+                  Current: {formatNumber(formData.budgetAnnualUsd, { suffix: "/year" })}
                 </p>
               </div>
 

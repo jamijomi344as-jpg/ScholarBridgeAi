@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 interface ScholarshipsManagerProps {
   adminProfileId: number;
@@ -22,7 +23,7 @@ interface ScholarshipRow {
   provider: string;
   country: string;
   coverageType: string;
-  amountUsdValue: number;
+  amountUsdValue: number | null;
   deadline: string;
   degreeLevels: string;
   eligibleMajors: string;
@@ -143,7 +144,7 @@ export function ScholarshipsManager({ adminProfileId }: ScholarshipsManagerProps
       provider: s.provider,
       country: s.country,
       coverageType: s.coverageType,
-      amountUsdValue: String(s.amountUsdValue),
+      amountUsdValue: s.amountUsdValue == null ? "" : String(s.amountUsdValue),
       deadline: s.deadline,
       degreeLevels: s.degreeLevels,
       eligibleMajors: s.eligibleMajors,
@@ -409,7 +410,7 @@ export function ScholarshipsManager({ adminProfileId }: ScholarshipsManagerProps
                     <td className="px-4 py-3 text-slate-600">{s.provider}</td>
                     <td className="px-4 py-3 text-slate-600">{s.country}</td>
                     <td className="px-4 py-3 text-slate-600">
-                      ${s.amountUsdValue.toLocaleString()}
+                      {formatMoney(s.amountUsdValue, "USD")}
                       {s.financialNeedBased && <span className="ml-1 text-[10px] text-emerald-600 font-bold">NEED</span>}
                       {s.meritBased && <span className="ml-1 text-[10px] text-indigo-600 font-bold">MERIT</span>}
                     </td>

@@ -2,6 +2,8 @@
  * Search provider interface (spec §22).
  * The agent is NOT hardwired to one search service.
  */
+import { isSameDomain } from "./domain";
+import { fetchHomepage } from "./fetch";
 
 export interface SearchResult {
   url: string;
@@ -30,7 +32,8 @@ export class DirectFetchProvider implements SearchProvider {
     const domain = siteMatch ? siteMatch[1] : this.allowedDomains[0];
     if (!domain) return [];
 
-    const html = await this.fetchPage(`https://${domain}/`);
+    // Bare and www variants are the same site — try both (www-only hosts).
+    const html = await fetchHomepage(domain);
     if (!html) return [];
 
     const results: SearchResult[] = [];
@@ -44,7 +47,7 @@ export class DirectFetchProvider implements SearchProvider {
       const label = m[2].trim();
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("javascript:")) continue;
       const url = new URL(href, `https://${domain}/`).toString();
-      if (!url.startsWith(`https://${domain}`)) continue; // same-domain only (spec §3D)
+      if (!isSameDomain(url, domain)) continue; // same-domain only (spec §3D), www-tolerant
       if (seen.has(url)) continue;
       seen.add(url);
       // Keyword filter (admission, tuition, international, scholarship, apply, program)
@@ -90,10 +93,27 @@ export class WebSearchProvider implements SearchProvider {
   }
 }
 
-/** Create the default provider chain: direct fetch first, web search fallback. */
+/**
+ * Create the provider chain: direct same-domain fetch first; a configured
+ * web-search API (env: RESEARCH_SEARCH_ENDPOINT + RESEARCH_SEARCH_API_KEY)
+ * is used as a fallback — e.g. for official-domain discovery when the DB row
+ * has no usable URL. No search API is required for the MVP (cost control).
+ */
 export function createSearchProvider(
   fetchPage: (url: string) => Promise<string | null>,
   allowedDomains: string[]
 ): SearchProvider {
-  return new DirectFetchProvider(fetchPage, allowedDomains);
+  const direct = new DirectFetchProvider(fetchPage, allowedDomains);
+  const endpoint = process.env.RESEARCH_SEARCH_ENDPOINT;
+  const apiKey = process.env.RESEARCH_SEARCH_API_KEY;
+  if (!endpoint || !apiKey) return direct;
+
+  const web = new WebSearchProvider(endpoint, apiKey);
+  return {
+    async search(query: string): Promise<SearchResult[]> {
+      const directResults = await direct.search(query);
+      if (directResults.length > 0) return directResults;
+      return web.search(query);
+    },
+  };
 }

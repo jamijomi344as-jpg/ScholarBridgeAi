@@ -101,8 +101,13 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
     }
   }
 
-  // Budget Alignment — only when tuition data is verified (NULL ≠ $0, spec §16).
-  if (uni.annualTuitionUsd != null) {
+  // Budget Alignment — only when tuition data is verified AND the profile has a budget
+  // (NULL ≠ $0, spec §16; nullable budget must never crash formatting).
+  if (
+    uni.annualTuitionUsd != null &&
+    profile.budgetAnnualUsd != null &&
+    Number.isFinite(profile.budgetAnnualUsd)
+  ) {
     const totalUniCost = uni.annualTuitionUsd + (uni.annualLivingEstUsd ?? 0);
     if (profile.budgetAnnualUsd >= totalUniCost) {
       score += 10;
@@ -195,9 +200,15 @@ export function calculateScholarshipMatch(profile: StudentProfileData, scholarsh
     }
   }
 
-  // Degree Level alignment
+  // Degree Level alignment (NULL-safe: JSON.parse(null) returns null, not []).
+  let levels: string[] = [];
   try {
-    const levels: string[] = JSON.parse(scholarship.degreeLevels);
+    const parsed = scholarship.degreeLevels ? JSON.parse(scholarship.degreeLevels) : [];
+    levels = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    levels = [];
+  }
+  if (levels.length > 0) {
     if (levels.includes("All") || levels.some(l => l.toLowerCase() === profile.degreeLevel.toLowerCase())) {
       score += 10;
       reasons.push(`Open to ${profile.degreeLevel} applicants`);
@@ -205,13 +216,12 @@ export function calculateScholarshipMatch(profile: StudentProfileData, scholarsh
       score -= 25;
       potentialIssues.push(`Only open to: ${levels.join(", ")}`);
     }
-  } catch {
-    // fallback
   }
 
   // Eligible majors (spec §22)
   try {
-    const majors: string[] = JSON.parse(scholarship.eligibleMajors || "[]");
+    const parsed = scholarship.eligibleMajors ? JSON.parse(scholarship.eligibleMajors) : [];
+    const majors: string[] = Array.isArray(parsed) ? parsed : [];
     if (majors.length && !majors.includes("All")) {
       const matchMajor = majors.some((m) =>
         m.toLowerCase().includes(profile.targetMajor.toLowerCase().split(" ")[0]) ||

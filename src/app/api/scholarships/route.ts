@@ -68,7 +68,13 @@ export async function GET(req: Request) {
     if (profileData) {
       results.sort((a, b) => b.matchScore - a.matchScore);
     } else {
-      results.sort((a, b) => b.amountUsdValue - a.amountUsdValue);
+      // NULL amounts sort after verified amounts (never treat NULL as $0).
+      results.sort((a, b) => {
+        if (a.amountUsdValue == null && b.amountUsdValue == null) return 0;
+        if (a.amountUsdValue == null) return 1;
+        if (b.amountUsdValue == null) return -1;
+        return b.amountUsdValue - a.amountUsdValue;
+      });
     }
 
     return NextResponse.json({ scholarships: results });

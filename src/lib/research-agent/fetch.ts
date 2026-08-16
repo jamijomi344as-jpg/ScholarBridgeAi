@@ -3,6 +3,7 @@
  * (spec §3D, §18, §21, §23).
  */
 import { AGENT_CONFIG } from "./config";
+import { isSameDomain } from "./domain";
 
 const cache = new Map<string, { html: string; at: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -44,6 +45,22 @@ export async function fetchPageText(url: string): Promise<string | null> {
   return null;
 }
 
+/**
+ * Fetch the homepage of a domain, trying both bare and www variants.
+ * Many official sites (e.g. imperial.ac.uk) only serve HTTPS on www — the
+ * agent must tolerate both.
+ */
+export async function fetchHomepage(domain: string): Promise<string | null> {
+  const candidates = domain.startsWith("www.")
+    ? [domain, domain.replace(/^www\./, "")]
+    : [domain, `www.${domain}`];
+  for (const d of candidates) {
+    const html = await fetchPageText(`https://${d}/`);
+    if (html) return html;
+  }
+  return null;
+}
+
 /** Extract same-domain absolute URLs from HTML. */
 export function extractLinks(html: string, baseUrl: string): string[] {
   const out = new Set<string>();
@@ -55,7 +72,8 @@ export function extractLinks(html: string, baseUrl: string): string[] {
     if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("javascript:")) continue;
     try {
       const url = new URL(href, base).toString();
-      if (url.startsWith(`${base.protocol}//${base.host}`)) out.add(url);
+      // Same-domain only, www/bare tolerant (spec §3D).
+      if (isSameDomain(url, base.host)) out.add(url);
     } catch {
       // ignore malformed
     }

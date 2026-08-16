@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { studentProfiles, aiEvaluations } from "@/db/schema";
 import { callAI } from "@/lib/ai";
+import { formatMoney } from "@/lib/format";
 import { eq } from "drizzle-orm";
 import { localeToLanguageName } from "@/i18n/config";
 
@@ -28,7 +29,7 @@ STUDENT PROFILE DATA:
 - Target Major: ${profile.targetMajor}
 - GPA: ${profile.gpa} / ${profile.gpaScale}
 - Standardized Test Scores: IELTS (${profile.ieltsScore ?? "N/A"}), TOEFL (${profile.toeflScore ?? "N/A"}), SAT (${profile.satScore ?? "N/A"}), GRE (${profile.greScore ?? "N/A"})
-- Annual Budget (USD): $${profile.budgetAnnualUsd?.toLocaleString()}
+- Annual Budget (USD): ${formatMoney(profile.budgetAnnualUsd, "USD", { placeholder: "Not specified" })}
 - Preferred Study Countries: ${profile.preferredCountries}
 - Scholarship Requirement: ${profile.needScholarship ? "Yes, urgently needed" : "No, self-funded/partial"}
 - Work Experience: ${profile.workExperienceYears ?? 0} years
@@ -78,7 +79,7 @@ Make the tone encouraging, professional, precise, and practical.`;
 ---
 
 ### ⚠️ Critical Admissions Gaps & Mitigation Plan
-1. **Budget-Tuition Differential:** Annual tuition budget of $${profile.budgetAnnualUsd?.toLocaleString()} is ${profile.budgetAnnualUsd < 35000 ? "below private US university rates (~$55k+). Prioritize public European universities (Germany, Netherlands, Switzerland) or fully-funded scholarships." : "well-positioned for public and state university tuition worldwide."}
+1. **Budget-Tuition Differential:** Annual tuition budget of ${formatMoney(profile.budgetAnnualUsd, "USD", { placeholder: "Not specified" })} is ${profile.budgetAnnualUsd == null ? "not yet specified — confirm the budget before finalizing the university shortlist." : profile.budgetAnnualUsd < 35000 ? "below private US university rates (~$55k+). Prioritize public European universities (Germany, Netherlands, Switzerland) or fully-funded scholarships." : "well-positioned for public and state university tuition worldwide."}
 2. **LOR Selection Strategy:** Secure 2 academic recommendations from senior faculty and 1 professional reference highlighting leadership and analytical problem solving.
 3. **GRE / Test Waiver Strategy:** ${profile.greScore ? `GRE score of ${profile.greScore} is a strong asset for US engineering/business schools.` : "Target universities with official GRE waivers or focus on UK/Germany where GRE is optional."}
 
