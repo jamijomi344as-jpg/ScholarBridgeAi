@@ -14,6 +14,8 @@ export const AGENT_CONFIG = {
   batchDelayMs: 1500,
   /** Max programs captured per university. */
   maxPrograms: 12,
+  /** Course-hub pages crawled one level for program discovery (spec §7). */
+  maxHubPages: 4,
   /** Confidence threshold to auto-write (below → review_required). */
   writeConfidence: 0.7,
   /** Confidence threshold for "verified" status. */

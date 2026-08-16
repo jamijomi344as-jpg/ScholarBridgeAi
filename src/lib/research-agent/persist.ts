@@ -408,7 +408,7 @@ export async function upsertCycle(
       (x) =>
         (x.academicYear ?? "") === (c.academicYear ?? "") &&
         (x.applicationType ?? "") === (c.applicationType ?? "") &&
-        (x.deadline ? String(x.deadline).slice(0, 10) : "") === (deadline ?? "")
+        (x.deadline ? (toIsoDate(x.deadline) ?? "") : "") === (deadline ?? "")
     );
     if (existing) return { inserted: false, duplicate: true };
     await db.insert(applicationCycles).values({

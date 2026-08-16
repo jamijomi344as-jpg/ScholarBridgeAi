@@ -376,6 +376,35 @@ export function ResearchAgent({ adminProfileId }: ResearchAgentProps) {
                 </div>
               </div>
             )}
+
+            {/* Extraction pipeline debug (spec §21) */}
+            {report.debug && (
+              <div className="mb-3 rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Extraction pipeline — fetched {report.debug.fetchedPages} pages</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
+                  {Object.entries(report.debug.classifiedCounts || {}).map(([cat, n]) => (
+                    <span key={cat} className="text-[10px] text-slate-500">
+                      <b className="text-slate-700">{cat}</b>: {String(n)}
+                    </span>
+                  ))}
+                </div>
+                {Object.keys(report.debug.extractionCounts || {}).length > 0 && (
+                  <p className="text-[10px] text-slate-500 mb-1.5">
+                    Candidates: {Object.entries(report.debug.extractionCounts).map(([f, n]) => `${f} ${n}`).join(" · ")}
+                  </p>
+                )}
+                {(report.debug.pageNotes || []).length > 0 && (
+                  <div className="max-h-36 overflow-y-auto space-y-0.5">
+                    {report.debug.pageNotes.slice(0, 25).map((n: any, i: number) => (
+                      <p key={i} className={`text-[10px] truncate ${n.extracted > 0 ? "text-slate-500" : "text-amber-600"}`}>
+                        [{n.category}] {n.url} · {n.textLength} chars · {n.extracted} extracted
+                        {n.reason ? ` — ${n.reason}` : ""}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

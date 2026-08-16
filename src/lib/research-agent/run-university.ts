@@ -6,10 +6,14 @@ import { fetchPageText, fetchHomepage, extractLinks, htmlToText, sleep } from ".
 import { resolveOfficialDomain, pickOfficialDomainFromSearch } from "./domain";
 import {
   classifyLink,
+  classifyPageByContent,
   isMeaningfulSourceTitle,
+  firstHeading,
   validateProgramPage,
   extractMoney,
   extractNumberReq,
+  extractTextReq,
+  extractFlagReq,
   extractRequiredFlag,
   extractFoundedYear,
   extractAcceptanceRate,
@@ -30,7 +34,7 @@ import {
   upsertScholarship,
 } from "./persist";
 import { logRunStart, logRunFinish, buildReport } from "./audit";
-import { normalizeNameKey, toNumber, normalizeCurrency } from "./normalize";
+import { normalizeNameKey, normalizeUrl, toNumber, normalizeCurrency, toIsoDate } from "./normalize";
 import { isResearchSourceUrl, rejectSourceReason } from "./urlFilter";
 import type { RunRequest, RunStatus, AuditReport, SourceEvidence, FieldDecision } from "./types";
 
@@ -56,6 +60,12 @@ export async function runUniversity(
   const rejectedSources: { url: string; reason: string }[] = [];
   const discoveryOnly: { url: string; title: string; type: string; reason: string }[] = [];
   const evidence: SourceEvidence[] = [];
+  const debug = {
+    fetchedPages: 0,
+    classifiedCounts: {} as Record<string, number>,
+    extractionCounts: {} as Record<string, number>,
+    pageNotes: [] as { url: string; category: string; title: string; textLength: number; extracted: number; reason?: string }[],
+  };
   let universityName = `#${universityId}`;
   let sourcesReadBack = 0;
   let duplicatesPrevented = 0;
@@ -95,7 +105,7 @@ export async function runUniversity(
       const report = buildReport({
         universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
         insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-        newSources, rejectedSources, discoveryOnly, errors, sourcesReadBack, duplicatesPrevented,
+        newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
       });
       await logRunFinish(logId, report);
       return report;
@@ -172,6 +182,55 @@ export async function runUniversity(
       }
     }
 
+    // Course hubs are crawled ONE level to discover real program pages
+    // (hub pages themselves are discovery-only, never programs — spec §7).
+    // Queue-based: hubs discovered while crawling hubs are crawled too
+    // (e.g. /study/ → /study/courses/ → program pages).
+    const HUB_PATH_RE = /(^|\/)(courses?|programmes?|programs?|degrees?|study)\/?$/;
+    const isHub = (url: string) => {
+      try {
+        return HUB_PATH_RE.test(new URL(url).pathname) && url !== home?.url;
+      } catch {
+        return false;
+      }
+    };
+    const hubQueue = discovered.filter((d) => isHub(d.url)).slice(0, AGENT_CONFIG.maxHubPages);
+    const hubCrawled = new Set<string>();
+    while (hubQueue.length > 0 && hubCrawled.size < AGENT_CONFIG.maxHubPages) {
+      const hub = hubQueue.shift()!;
+      if (hubCrawled.has(hub.url)) continue;
+      hubCrawled.add(hub.url);
+      progress(`Crawling course hub ${hub.url} for program links (discovery only)...`);
+      const html = await fetchPage(hub.url);
+      if (!html) continue;
+      for (const link of extractLinks(html, hub.url)) {
+        if (seen.has(link) || discovered.length >= maxPages * 4) continue;
+        const reason = rejectSourceReason(link);
+        if (reason) {
+          seen.add(link);
+          rejectedSources.push({ url: link, reason });
+          continue;
+        }
+        seen.add(link);
+        const type = classifyLink(link, "");
+        discovered.push({ url: link, title: link, type });
+        if (isHub(link) && hubCrawled.size < AGENT_CONFIG.maxHubPages) hubQueue.push({ url: link, title: link, type });
+      }
+      await sleep(AGENT_CONFIG.fetchDelayMs);
+    }
+
+    // Program-priority ordering: real program pages and tuition/requirements
+    // pages are fetched FIRST so the page cap never starves them.
+    discovered.sort((a, b) => {
+      const rank = (d: { type: string }) =>
+        d.type === "program" ? 0
+        : d.type === "tuition" || d.type === "requirements" ? 1
+        : d.type === "deadline" || d.type === "scholarship" || d.type === "living_costs" ? 2
+        : d.type === "homepage" ? 3
+        : 4;
+      return rank(a) - rank(b);
+    });
+
     // STEP D — fetch pages (capped, deduped) (spec §3D, §21)
     const pages: { url: string; title: string; type: string; text: string }[] = [];
     const fetched = new Set<string>();
@@ -190,21 +249,39 @@ export async function runUniversity(
     }
 
     // STEP E — extract (generic regex + optional AI assist) (spec §3E, §9).
+    // CLASSIFICATION FIRST: fetched pages are re-classified using URL +
+    // title + CONTENT — URL keywords alone are not enough (spec §3D).
     // Page-type gate + per-field hints: a tuition page only contributes
     // tuition evidence, a living-costs page only living/accommodation
     // evidence, etc. — generic, never by university name.
+    progress("Classifying fetched pages by content...");
+    for (const p of pages) {
+      // The root URL is homepage by definition — never reclassified by nav text.
+      if (p.type === "homepage") continue;
+      const contentCat = classifyPageByContent(p.text, p.title);
+      if (contentCat) {
+        const oldType = p.type;
+        p.type = contentCat.category;
+        const disc = discovered.find((d) => d.url === p.url);
+        if (disc && disc.type === oldType) disc.type = contentCat.category;
+      }
+    }
+
     progress("Extracting structured data...");
     const ctxFor = (p: { url: string; title: string; type: string }) => ({
       url: p.url,
       title: p.title || p.url,
       sourceType: `official_${p.type}`,
     });
-    const pageTypeIs = (p: { type: string }, allowed: string[]) =>
-      allowed.includes(p.type) || p.type === "other";
+    const pageTypeIs = (p: { type: string }, allowed: string[]) => allowed.includes(p.type);
+
+    debug.fetchedPages = pages.length;
+    for (const p of pages) debug.classifiedCounts[p.type] = (debug.classifiedCounts[p.type] || 0) + 1;
 
     for (const p of pages) {
       const ctx = ctxFor(p);
       const ai = await aiExtract(p.text, p.url);
+      const before = evidence.length;
 
       if (scopes.includes("tuition") && pageTypeIs(p, ["tuition"])) {
         const t = extractMoney(p.text, ctx, "annual_tuition", "year", /tuition|fee/);
@@ -227,12 +304,30 @@ export async function runUniversity(
         if (toefl) evidence.push(toefl);
         const det = extractNumberReq(p.text, ctx, "min_det", "Duolingo");
         if (det) evidence.push(det);
+        const pte = extractNumberReq(p.text, ctx, "min_pte", "PTE");
+        if (pte) evidence.push(pte);
+        const cambridge = extractNumberReq(p.text, ctx, "min_cambridge", "Cambridge");
+        if (cambridge) evidence.push(cambridge);
         const sat = extractNumberReq(p.text, ctx, "min_sat", "SAT");
         if (sat) evidence.push(sat);
         const act = extractNumberReq(p.text, ctx, "min_act", "ACT");
         if (act) evidence.push(act);
         const gpa = extractNumberReq(p.text, ctx, "min_gpa", "GPA");
         if (gpa) evidence.push(gpa);
+        // Text requirements: A-level grades, IB points, TMUA.
+        const alevel = extractTextReq(p.text, ctx, "a_level_requirement", /(?:A\*?AA|AAA|AAB|ABB|BBB|A\*A\*A)[^\n.]{0,60}(?:A-level|A level)?/i);
+        if (alevel) evidence.push(alevel);
+        const ib = extractTextReq(p.text, ctx, "ib_requirement", /(?:International Baccalaureate|IB)\s+[^.]{0,80}\b\d{2}\s+points?\b/i);
+        if (ib) evidence.push(ib);
+        const tmua = extractTextReq(p.text, ctx, "subject_requirements", /TMUA[^.\n]{0,80}/i);
+        if (tmua) evidence.push(tmua);
+        // Explicit booleans (only when stated).
+        const interview = extractFlagReq(p.text, ctx, "interview_required", /\binterview\b[^.\n]{0,60}(?:required|part of the|selection)/i);
+        if (interview) evidence.push(interview);
+        const recommendation = extractFlagReq(p.text, ctx, "recommendation_required", /\brecommendation\b[^.\n]{0,60}(?:required|need|request)/i);
+        if (recommendation) evidence.push(recommendation);
+        const personalStatement = extractFlagReq(p.text, ctx, "personal_statement_required", /\bpersonal statement\b[^.\n]{0,60}(?:required|needed)/i);
+        if (personalStatement) evidence.push(personalStatement);
         // SAT/ACT required without minimum (spec §10) — only from explicit text.
         const satReq = extractRequiredFlag(p.text, ctx, "sat_required_no_min", "SAT");
         if (satReq) evidence.push(satReq);
@@ -256,6 +351,34 @@ export async function runUniversity(
       }
       if (scopes.includes("sources")) {
         evidence.push({ field: "source_discovered", value: p.url, sourceUrl: ctx.url, sourceTitle: ctx.title, sourceType: ctx.sourceType, exactEvidence: "page discovered", confidence: 1 });
+      }
+
+      const extracted = evidence.length - before;
+      if (extracted > 0) {
+        for (const ev of evidence.slice(before)) {
+          debug.extractionCounts[ev.field] = (debug.extractionCounts[ev.field] || 0) + 1;
+        }
+      } else {
+        // ISSUE 1/12 — never silently discard a fetched page without results.
+        const reason = p.type === "other"
+          ? "page has no useful source category — no extraction scope applies"
+          : "no supported field matched the page content (no money/requirement/deadline candidates)";
+        progress(`Fetched but no supported field extracted: ${p.url} [${p.type}] "${(p.title || "").slice(0, 60)}" — ${reason}`);
+        debug.pageNotes.push({
+          url: p.url,
+          category: p.type,
+          title: (p.title || "").slice(0, 120),
+          textLength: p.text.length,
+          extracted: 0,
+          reason,
+        });
+      }
+    }
+    // Pages that DID extract — one note each (reason omitted).
+    for (const p of pages) {
+      const count = evidence.filter((e) => e.sourceUrl === p.url).length;
+      if (count > 0) {
+        debug.pageNotes.push({ url: p.url, category: p.type, title: (p.title || "").slice(0, 120), textLength: p.text.length, extracted: count });
       }
     }
 
@@ -401,69 +524,175 @@ export async function runUniversity(
       }
     }
 
-    // Requirements per program (spec §9, §10)
-    if (scopes.includes("requirements") && insertedPrograms.length > 0 && !dryRun) {
-      progress("Writing requirements...");
-      const progs = await readCurrent(universityId);
-      for (const p of progs.programs.slice(0, AGENT_CONFIG.maxPrograms)) {
-        const satReq = best(evidence, "sat_required_no_min");
-        const actReq = best(evidence, "act_required_no_min");
-        const req = {
-          minIelts: toNumber(best(evidence, "min_ielts")?.value) ?? undefined,
-          minToefl: toNumber(best(evidence, "min_toefl")?.value) ?? undefined,
-          minDet: toNumber(best(evidence, "min_det")?.value) ?? undefined,
-          minSat: toNumber(best(evidence, "min_sat")?.value) ?? undefined,
-          minAct: toNumber(best(evidence, "min_act")?.value) ?? undefined,
-          minGpa: toNumber(best(evidence, "min_gpa")?.value) ?? undefined,
-          otherRequirements: satReq || actReq
-            ? `${satReq ? "SAT required — no minimum published. " : ""}${actReq ? "ACT required — no minimum published." : ""}`.trim()
-            : undefined,
-        };
-        const ok = await upsertRequirements(p.id, req, best(evidence, "min_ielts")?.sourceUrl || "", best(evidence, "min_ielts")?.sourceYear);
-        if (ok) updatedRequirements.push(p.name);
+    // Requirements per program (spec §9, §10) — ALL existing+new programs,
+    // dry-run compares against the current DB rows (SKIPPED when unchanged).
+    if (scopes.includes("requirements")) {
+      progress("Processing requirements...");
+      const progs = dryRun
+        ? current.programs
+        : (await readCurrent(universityId)).programs;
+      const satReq = best(evidence, "sat_required_no_min");
+      const actReq = best(evidence, "act_required_no_min");
+      const req = {
+        minIelts: toNumber(best(evidence, "min_ielts")?.value) ?? undefined,
+        minToefl: toNumber(best(evidence, "min_toefl")?.value) ?? undefined,
+        minDet: toNumber(best(evidence, "min_det")?.value) ?? undefined,
+        minSat: toNumber(best(evidence, "min_sat")?.value) ?? undefined,
+        minAct: toNumber(best(evidence, "min_act")?.value) ?? undefined,
+        minGpa: toNumber(best(evidence, "min_gpa")?.value) ?? undefined,
+        ibRequirement: typeof best(evidence, "ib_requirement")?.value === "string" ? String(best(evidence, "ib_requirement")!.value) : undefined,
+        aLevelRequirement: typeof best(evidence, "a_level_requirement")?.value === "string" ? String(best(evidence, "a_level_requirement")!.value) : undefined,
+        subjectRequirements: typeof best(evidence, "subject_requirements")?.value === "string" ? String(best(evidence, "subject_requirements")!.value) : undefined,
+        interviewRequired: best(evidence, "interview_required")?.value === true,
+        recommendationRequired: best(evidence, "recommendation_required")?.value === true,
+        personalStatementRequired: best(evidence, "personal_statement_required")?.value === true,
+        otherRequirements: [
+          best(evidence, "min_pte") ? `PTE Academic ${String(best(evidence, "min_pte")!.value)}` : "",
+          best(evidence, "min_cambridge") ? `Cambridge English Scale ${String(best(evidence, "min_cambridge")!.value)}` : "",
+          satReq ? "SAT required — no minimum published." : "",
+          actReq ? "ACT required — no minimum published." : "",
+        ].filter(Boolean).join(" ") || undefined,
+      };
+      const hasAnyReqEvidence =
+        req.minIelts != null || req.minToefl != null || req.minDet != null || req.minSat != null ||
+        req.minAct != null || req.minGpa != null || req.ibRequirement != null || req.aLevelRequirement != null ||
+        req.subjectRequirements != null || req.interviewRequired || req.recommendationRequired ||
+        req.personalStatementRequired || req.otherRequirements != null;
+
+      for (const p of progs.slice(0, AGENT_CONFIG.maxPrograms)) {
+        const reqSource = best(evidence, "min_ielts")?.sourceUrl || best(evidence, "a_level_requirement")?.sourceUrl || "";
+        if (dryRun) {
+          if (!hasAnyReqEvidence) {
+            skippedFields.push({
+              entity: "program.requirements", field: "requirements", action: "skip",
+              dbValue: "existing row", newValue: "no new requirement evidence found",
+              sourceUrl: "", reason: "no requirement evidence extracted from official pages — nothing to change",
+            });
+            continue;
+          }
+          const reqMap: [keyof typeof req, string][] = [
+            ["minIelts", "min_ielts"], ["minToefl", "min_toefl"], ["minDet", "min_det"],
+            ["minSat", "min_sat"], ["minAct", "min_act"], ["minGpa", "min_gpa"],
+            ["ibRequirement", "ib_requirement"], ["aLevelRequirement", "a_level_requirement"],
+            ["subjectRequirements", "subject_requirements"],
+            ["interviewRequired", "interview_required"],
+            ["recommendationRequired", "recommendation_required"],
+            ["personalStatementRequired", "personal_statement_required"],
+            ["otherRequirements", "other_requirements"],
+          ];
+          for (const [key, evField] of reqMap) {
+            const newVal = req[key];
+            if (newVal === undefined || newVal === null || newVal === false) continue;
+            const ev = best(evidence, evField);
+            const dbVal = (p as any)[key];
+            if (dbVal != null && String(dbVal) === String(newVal)) {
+              skippedFields.push({
+                entity: "program.requirements", field: evField, action: "skip",
+                dbValue: dbVal, newValue: newVal,
+                sourceUrl: ev?.sourceUrl || reqSource,
+                sourceTitle: ev?.sourceTitle, sourceType: ev?.sourceType, confidence: ev?.confidence,
+                reason: "CASE B: unchanged — requirement identical to DB",
+              });
+            } else if (dbVal == null) {
+              updatedFields.push({
+                entity: "program.requirements", field: evField, action: "write",
+                dbValue: null, newValue: newVal,
+                sourceUrl: ev?.sourceUrl || reqSource,
+                sourceTitle: ev?.sourceTitle, sourceType: ev?.sourceType, confidence: ev?.confidence,
+                reason: "CASE A: DB requirement empty — official page fills the gap",
+              });
+            } else {
+              updatedFields.push({
+                entity: "program.requirements", field: evField, action: "update",
+                dbValue: dbVal, newValue: newVal,
+                sourceUrl: ev?.sourceUrl || reqSource,
+                sourceTitle: ev?.sourceTitle, sourceType: ev?.sourceType, confidence: ev?.confidence,
+                reason: "CASE C: requirement changed on the official page",
+              });
+            }
+          }
+        } else if (hasAnyReqEvidence) {
+          const ok = await upsertRequirements(p.id, req, reqSource, best(evidence, "min_ielts")?.sourceYear);
+          if (ok) updatedRequirements.push(p.name);
+        }
       }
     }
 
-    // Application cycles (spec §11)
+    // Application cycles (spec §11) — dry-run dedupes against existing DB rows.
     if (scopes.includes("application_cycles")) {
       progress("Processing application cycles...");
       const deadlineEv = best(evidence, "deadline");
       if (deadlineEv) {
         const cycle = {
+          academicYear: /20\d\d/.exec(deadlineEv.exactEvidence)?.[0] || undefined,
           deadline: typeof deadlineEv.value === "string" ? deadlineEv.value : undefined,
           applicationType: /early/i.test(deadlineEv.exactEvidence) ? "Early Action" : /regular/i.test(deadlineEv.exactEvidence) ? "Regular Decision" : undefined,
           applicationFee: toNumber(best(evidence, "application_fee")?.value) ?? undefined,
           applicationFeeCurrency: normalizeCurrency(best(evidence, "application_fee")?.currency) ?? undefined,
         };
-        if (!dryRun) {
-          const res = await upsertCycle(universityId, cycle, deadlineEv.sourceUrl);
-          if (res.inserted) insertedCycles.push(`${cycle.applicationType || "Application"} ${cycle.deadline}`);
-          else duplicatesPrevented += 1;
+        const existing = current.cycles.find(
+          (c) =>
+            (c.deadline ? (toIsoDate(c.deadline) ?? "") : "") === (cycle.deadline ?? "") &&
+            (c.academicYear ?? "") === (cycle.academicYear ?? "")
+        );
+        if (existing) {
+          skippedFields.push({
+            entity: "application_cycle", field: "deadline", action: "skip",
+            dbValue: existing.deadline, newValue: cycle.deadline,
+            sourceUrl: deadlineEv.sourceUrl, sourceTitle: deadlineEv.sourceTitle,
+            sourceType: deadlineEv.sourceType, confidence: deadlineEv.confidence,
+            reason: "CASE B: unchanged — application deadline already in DB",
+          });
+          progress(`Application deadline ${cycle.deadline} already in DB — SKIPPED (unchanged)`);
         } else {
           insertedCycles.push(`${cycle.applicationType || "Application"} ${cycle.deadline}`);
+          progress(`Application deadline ${cycle.deadline} — would insert`);
+        }
+        if (!dryRun && !existing) {
+          const res = await upsertCycle(universityId, cycle, deadlineEv.sourceUrl);
+          if (!res.inserted) duplicatesPrevented += 1;
         }
       }
     }
 
-    // Scholarships (spec §12) — amount_usd ONLY for USD sources.
+    // Scholarships (spec §12) — amount_usd ONLY for USD sources. Dry-run
+    // dedupes against existing rows by normalized title / URL.
     if (scopes.includes("scholarships")) {
       progress("Processing scholarships...");
       const schPages = pages.filter((p) => p.type === "scholarship").slice(0, 6);
       for (const p of schPages) {
         const t = extractMoney(p.text, ctxFor(p), "scholarship_amount", "year", /scholarship|award|grant/);
+        // Real scholarship title from the page heading (never a generic label).
+        const title = (firstHeading(p.text) || p.title || "University Scholarship").slice(0, 150);
         const sch = {
-          title: (p.title || "University Scholarship").slice(0, 150),
+          title,
           websiteUrl: p.url,
           amountUsd: t?.currency === "USD" ? toNumber(t.value) ?? undefined : undefined,
           currency: t?.currency,
           amountOriginal: t?.currency && t.currency !== "USD" ? toNumber(t.value) ?? undefined : undefined,
         };
-        if (!dryRun) {
-          const res = await upsertScholarship(sch, p.url);
-          if (res.inserted) insertedScholarships.push(sch.title);
-          else duplicatesPrevented += 1;
-        } else if (t) {
-          insertedScholarships.push(sch.title);
+        const existing = current.scholarships.find(
+          (x) => normalizeNameKey(x.title || "") === normalizeNameKey(title) || normalizeUrl(String(x.websiteUrl || "")) === normalizeUrl(p.url)
+        );
+        if (existing) {
+          skippedFields.push({
+            entity: "scholarship", field: "title", action: "skip",
+            dbValue: existing.title, newValue: title,
+            sourceUrl: p.url, sourceTitle: p.title || p.url, sourceType: `official_${p.type}`, confidence: 1,
+            reason: "CASE B: unchanged — scholarship already in DB (normalized title/URL match)",
+          });
+          progress(`Scholarship '${title}' already in DB — SKIPPED (unchanged)`);
+          if (!dryRun) {
+            const res = await upsertScholarship(sch, p.url);
+            if (!res.inserted) duplicatesPrevented += 1;
+          }
+        } else {
+          insertedScholarships.push(title);
+          progress(`Scholarship '${title}' — would insert`);
+          if (!dryRun) {
+            const res = await upsertScholarship(sch, p.url);
+            if (!res.inserted) duplicatesPrevented += 1;
+          }
         }
       }
     }
@@ -529,8 +758,12 @@ export async function runUniversity(
       };
 
       // 1. Evidence-backed sources (always persist — they support a field).
+      //    Evidence whose page category is "other" is never persisted.
+      const evidencePages = evidence.filter(
+        (e) => e.field !== "source_discovered" && !(e.sourceType || "").toLowerCase().includes("other")
+      );
       if (!dryRun) {
-        for (const ev of evidence.filter((e) => e.field !== "source_discovered")) {
+        for (const ev of evidencePages) {
           const res = await upsertSource(ev, universityId);
           if (res.rejected) {
             rejectedSources.push({ url: ev.sourceUrl, reason: res.rejected });
@@ -541,8 +774,7 @@ export async function runUniversity(
         }
       } else {
         const added = new Set<string>();
-        for (const ev of evidence) {
-          if (ev.field === "source_discovered") continue;
+        for (const ev of evidencePages) {
           if (added.has(ev.sourceUrl)) continue;
           const check = isAcceptableSource(ev.sourceUrl, ev.sourceTitle, ev.sourceType);
           if (!check.ok) {
@@ -573,7 +805,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, rejectedSources, discoveryOnly, errors, sourcesReadBack, duplicatesPrevented,
+      newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
     });
     progress("Audit complete.");
     await logRunFinish(logId, report);
@@ -584,7 +816,7 @@ export async function runUniversity(
     const report = buildReport({
       universityId, universityName, dryRun, updatedFields, skippedFields, reviewRequired,
       insertedPrograms, updatedRequirements, insertedCycles, insertedScholarships,
-      newSources, rejectedSources, discoveryOnly, errors, sourcesReadBack, duplicatesPrevented,
+      newSources, rejectedSources, discoveryOnly, debug, errors, sourcesReadBack, duplicatesPrevented,
     });
     await logRunFinish(logId, report, String(err?.message || err));
     return report;

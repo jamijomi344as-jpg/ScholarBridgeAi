@@ -192,6 +192,8 @@ export interface AuditReport {
   rejectedSources: { url: string; reason: string }[];
   /** Crawled same-domain pages kept for discovery only — NOT persisted as sources. */
   discoveryOnly: { url: string; title: string; type: string; reason: string }[];
+  /** Per-page extraction diagnostics ("fetched but nothing extracted" is never silent). */
+  debug: ExtractionDebug;
   errors: string[];
   sourcesReadBack: number;
   duplicatesPrevented: number;
@@ -206,4 +208,24 @@ export interface RunStatus {
   error?: string;
   startedAt: number;
   finishedAt?: number;
+}
+
+/** One fetched page — why it did or did not produce extracted values (debug). */
+export interface PageFetchNote {
+  url: string;
+  category: string;
+  title: string;
+  textLength: number;
+  /** Number of evidence entries produced by this page. */
+  extracted: number;
+  /** When extracted === 0: reason no supported field was extracted. */
+  reason?: string;
+}
+
+/** Extraction pipeline statistics (debug report, spec §21). */
+export interface ExtractionDebug {
+  fetchedPages: number;
+  classifiedCounts: Record<string, number>;
+  extractionCounts: Record<string, number>;
+  pageNotes: PageFetchNote[];
 }

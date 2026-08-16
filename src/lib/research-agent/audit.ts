@@ -6,7 +6,7 @@
 import { db } from "@/db";
 import { refreshJobs } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import type { AuditReport, FieldDecision } from "./types";
+import type { AuditReport, ExtractionDebug, FieldDecision } from "./types";
 
 /** Create a run log row (best-effort). Returns log id or null. */
 export async function logRunStart(universityId: number, scopes: string[]): Promise<number | null> {
@@ -69,6 +69,7 @@ export function buildReport(input: {
   newSources: { url: string; title: string }[];
   rejectedSources: { url: string; reason: string }[];
   discoveryOnly: { url: string; title: string; type: string; reason: string }[];
+  debug: ExtractionDebug;
   errors: string[];
   sourcesReadBack: number;
   duplicatesPrevented: number;
@@ -87,6 +88,7 @@ export function buildReport(input: {
     reviewRequired: input.reviewRequired,
     rejectedSources: input.rejectedSources,
     discoveryOnly: input.discoveryOnly,
+    debug: input.debug,
     errors: input.errors,
     sourcesReadBack: input.sourcesReadBack,
     duplicatesPrevented: input.duplicatesPrevented,
