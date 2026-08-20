@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { studentProfiles, payments, subscriptions } from "@/db/schema";
 import { isAdmin } from "@/lib/admin";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ilike } from "drizzle-orm";
 
 export async function POST(req: Request) {
   try {
@@ -11,19 +11,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden: admin access required" }, { status: 403 });
     }
 
-    // Locate the recipient profile by email (lowercased) or explicit profileId.
+    // Locate the recipient profile by explicit profileId (exact, most
+    // reliable) or by email — case-insensitively, because PostgreSQL text
+    // equality is case-sensitive and stored emails may have mixed case.
     let profile = null;
-    if (body.email) {
-      const email = String(body.email).toLowerCase().trim();
-      const rows = await db.select().from(studentProfiles).where(eq(studentProfiles.email, email));
-      profile = rows[0] ?? null;
-    }
-    if (!profile && body.profileId) {
+    if (body.profileId) {
       const [row] = await db
         .select()
         .from(studentProfiles)
         .where(eq(studentProfiles.id, Number(body.profileId)));
       profile = row ?? null;
+    }
+    if (!profile && body.email) {
+      // Escape wildcards so an email containing % or _ is matched literally.
+      const email = String(body.email)
+        .toLowerCase()
+        .trim()
+        .replace(/[%_]/g, (c) => `\\${c}`);
+      const rows = await db
+        .select()
+        .from(studentProfiles)
+        .where(ilike(studentProfiles.email, email));
+      profile = rows[0] ?? null;
     }
     if (!profile) {
       return NextResponse.json({ error: "Student profile not found" }, { status: 404 });

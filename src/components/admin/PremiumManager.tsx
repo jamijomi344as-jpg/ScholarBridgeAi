@@ -54,12 +54,7 @@ export function PremiumManager({ adminProfileId }: PremiumManagerProps) {
     fetchProfiles();
   }, []);
 
-  const handleGift = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) {
-      setError("Enter a student email to gift premium.");
-      return;
-    }
+  const giftByEmail = async (recipientEmail: string) => {
     setSaving(true);
     setError("");
     setSuccess("");
@@ -69,7 +64,7 @@ export function PremiumManager({ adminProfileId }: PremiumManagerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           adminProfileId,
-          email: email.trim(),
+          email: recipientEmail.trim(),
           days: Number(days) || 30,
         }),
       });
@@ -81,6 +76,45 @@ export function PremiumManager({ adminProfileId }: PremiumManagerProps) {
         ).toLocaleDateString()}.`
       );
       setEmail("");
+      await fetchProfiles();
+    } catch (err: any) {
+      setError(err.message || "Failed to grant premium");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setError("Enter a student email to gift premium.");
+      return;
+    }
+    await giftByEmail(email);
+  };
+
+  /** Gift directly by profile id — immune to email case/spacing mismatches. */
+  const handleGiftProfile = async (p: AdminProfileRow) => {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/admin/premium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminProfileId,
+          profileId: p.id,
+          days: Number(days) || 30,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to grant premium");
+      setSuccess(
+        `Premium gifted to ${data.profile?.name || data.profile?.email || "student"} until ${new Date(
+          data.subscription.currentPeriodEnd
+        ).toLocaleDateString()}.`
+      );
       await fetchProfiles();
     } catch (err: any) {
       setError(err.message || "Failed to grant premium");
@@ -252,9 +286,19 @@ export function PremiumManager({ adminProfileId }: PremiumManagerProps) {
                     <UserX className="h-3 w-3" /> Revoke
                   </button>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
-                    <CheckCircle2 className="h-3 w-3" /> No premium
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleGiftProfile(p)}
+                      disabled={saving}
+                      className="flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                      title={`Gift ${days} days of premium to ${p.name}`}
+                    >
+                      <Gift className="h-3 w-3" /> Gift
+                    </button>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <CheckCircle2 className="h-3 w-3" /> No premium
+                    </span>
+                  </div>
                 )}
               </li>
             ))}
