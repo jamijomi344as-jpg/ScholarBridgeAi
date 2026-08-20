@@ -133,7 +133,7 @@ export function ForumThreadView({
           >
             <Flag className="h-3.5 w-3.5" />
           </button>
-          {isModerator && (
+          {(isModerator || reply.authorId === currentUserId) && (
             <button
               onClick={() => onDeleteReply(reply.id)}
               className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
@@ -214,10 +214,12 @@ export function ForumThreadView({
                 {thread.isLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                 {thread.isLocked ? t("unlock") : t("lock")}
               </button>
-              <button onClick={onDeleteThread} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">
-                <Trash2 className="h-4 w-4" /> {t("deleteThread")}
-              </button>
             </>
+          )}
+          {(isModerator || thread.authorId === currentUserId) && (
+            <button onClick={onDeleteThread} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">
+              <Trash2 className="h-4 w-4" /> {t("deleteThread")}
+            </button>
           )}
         </div>
       </div>

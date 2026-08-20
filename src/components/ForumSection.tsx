@@ -186,8 +186,9 @@ export function ForumSection({ activeProfile, isModerator = false }: ForumSectio
   };
 
   const handleDeleteReply = async (replyId: number) => {
+    if (!userId) return;
     try {
-      await fetch(`/api/forum/replies/${replyId}`, { method: "DELETE" });
+      await fetch(`/api/forum/replies/${replyId}?requesterId=${userId}`, { method: "DELETE" });
       if (openThread) openThreadById(openThread.id);
     } catch (err) {
       console.error(err);
@@ -224,9 +225,9 @@ export function ForumSection({ activeProfile, isModerator = false }: ForumSectio
   };
 
   const handleDeleteThread = async () => {
-    if (!openThread) return;
+    if (!openThread || !userId) return;
     try {
-      await fetch(`/api/forum/threads/${openThread.id}`, { method: "DELETE" });
+      await fetch(`/api/forum/threads/${openThread.id}?requesterId=${userId}`, { method: "DELETE" });
       setOpenThread(null);
       setReplies([]);
       loadThreads();
@@ -263,14 +264,15 @@ export function ForumSection({ activeProfile, isModerator = false }: ForumSectio
   };
 
   const handleDeleteTarget = async (targetType: "thread" | "reply", targetId: number) => {
+    if (!userId) return;
     if (targetType === "thread") {
-      await fetch(`/api/forum/threads/${targetId}`, { method: "DELETE" });
+      await fetch(`/api/forum/threads/${targetId}?requesterId=${userId}`, { method: "DELETE" });
       if (openThread?.id === targetId) {
         setOpenThread(null);
         setReplies([]);
       }
     } else {
-      await fetch(`/api/forum/replies/${targetId}`, { method: "DELETE" });
+      await fetch(`/api/forum/replies/${targetId}?requesterId=${userId}`, { method: "DELETE" });
       if (openThread) openThreadById(openThread.id);
     }
     loadReports();

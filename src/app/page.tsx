@@ -580,7 +580,7 @@ export default function Home() {
             description="Read community topics, join discussions and post your own threads — an exclusive Premium feature."
             onUpgrade={() => setActiveTab("payments")}
           >
-            <ForumSection activeProfile={activeProfile} isModerator />
+            <ForumSection activeProfile={activeProfile} isModerator={activeProfile?.isAdmin ?? false} />
           </PremiumGate>
         )}
 

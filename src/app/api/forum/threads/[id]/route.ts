@@ -3,6 +3,17 @@ import { db } from "@/db";
 import { forumThreads, studentProfiles, forumCategories, forumLikes } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 
+/** Resolve the requester profile; returns null when not authenticated. */
+async function getRequester(requesterId: unknown): Promise<{ id: number; isAdmin: boolean } | null> {
+  const id = Number(requesterId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const [profile] = await db
+    .select({ id: studentProfiles.id, isAdmin: studentProfiles.isAdmin })
+    .from(studentProfiles)
+    .where(eq(studentProfiles.id, id));
+  return profile ?? null;
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -56,7 +67,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const threadId = parseInt(id, 10);
     const body = await req.json();
-    const { title, body: threadBody, isPinned, isLocked } = body;
+    const { title, body: threadBody, isPinned, isLocked, requesterId } = body;
+
+    // Pin/lock/title/body changes are moderator actions — admin only.
+    const requester = await getRequester(requesterId);
+    if (!requester) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (!requester.isAdmin) {
+      return NextResponse.json({ error: "Forbidden: moderator access required" }, { status: 403 });
+    }
 
     const [updated] = await db
       .update(forumThreads)
@@ -84,6 +104,29 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const { id } = await params;
     const threadId = parseInt(id, 10);
+    const { searchParams } = new URL(req.url);
+    const requester = await getRequester(searchParams.get("requesterId"));
+
+    if (!requester) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    // Only the thread author or an admin may delete the thread.
+    const [thread] = await db
+      .select({ id: forumThreads.id, authorId: forumThreads.authorId })
+      .from(forumThreads)
+      .where(eq(forumThreads.id, threadId));
+
+    if (!thread) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+    if (thread.authorId !== requester.id && !requester.isAdmin) {
+      return NextResponse.json(
+        { error: "Forbidden: only the thread author or an admin can delete this thread" },
+        { status: 403 }
+      );
+    }
+
     await db.delete(forumThreads).where(eq(forumThreads.id, threadId));
     return NextResponse.json({ success: true });
   } catch (error) {
