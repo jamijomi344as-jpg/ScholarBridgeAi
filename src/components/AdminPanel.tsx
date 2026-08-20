@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import dynamic from "next/dynamic";
-import { ShieldCheck, Building2, Video, Award, Gift, History, Settings2, RefreshCw, BadgeCheck, Headset, Bot } from "lucide-react";
+import { ShieldCheck, Building2, Video, Award, Gift, History, Settings2, RefreshCw, BadgeCheck, Headset, Bot, BarChart3 } from "lucide-react";
 import { StudentProfile } from "./Navbar";
 import { UniversitiesManager } from "./admin/UniversitiesManager";
 import { CoursesManager } from "./admin/CoursesManager";
@@ -13,6 +13,7 @@ import { ConfigManager } from "./admin/ConfigManager";
 import { RefreshCenter } from "./admin/RefreshCenter";
 import { VerificationManager } from "./admin/VerificationManager";
 import { ConsultingManager } from "./admin/ConsultingManager";
+import { AnalyticsDashboard } from "./admin/AnalyticsDashboard";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 /**
@@ -36,7 +37,7 @@ interface AdminPanelProps {
   activeProfile: StudentProfile | null;
 }
 
-type AdminTab = "universities" | "courses" | "scholarships" | "premium" | "audit" | "refresh" | "config" | "verify" | "consulting" | "research";
+type AdminTab = "analytics" | "universities" | "courses" | "scholarships" | "premium" | "audit" | "refresh" | "config" | "verify" | "consulting" | "research";
 
 export function AdminPanel({ activeProfile }: AdminPanelProps) {
   const [tab, setTab] = useState<AdminTab>("universities");
@@ -46,6 +47,7 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
   }
 
   const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
+    { id: "analytics", label: "Analytics", icon: <BarChart3 className="h-4 w-4" /> },
     { id: "universities", label: "Universities", icon: <Building2 className="h-4 w-4" /> },
     { id: "courses", label: "Courses & Videos", icon: <Video className="h-4 w-4" /> },
     { id: "scholarships", label: "Scholarships", icon: <Award className="h-4 w-4" /> },
@@ -89,6 +91,9 @@ export function AdminPanel({ activeProfile }: AdminPanelProps) {
 
       {/* Each tab is wrapped in an ErrorBoundary so a failing tab can never
           crash the whole Admin Panel. */}
+      {tab === "analytics" && (
+        <ErrorBoundary><AnalyticsDashboard adminProfileId={activeProfile.id} /></ErrorBoundary>
+      )}
       {tab === "universities" && (
         <ErrorBoundary><UniversitiesManager adminProfileId={activeProfile.id} /></ErrorBoundary>
       )}
