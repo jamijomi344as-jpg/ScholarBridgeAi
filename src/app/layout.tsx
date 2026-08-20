@@ -8,6 +8,11 @@ const SITE_URL =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  // Google Search Console ownership verification (renders the
+  // <meta name="google-site-verification" .../> tag in <head>).
+  verification: {
+    google: "EZ2ipQrYUQxTQEBlEGYcqAOfVHm6pc0oIm1BYkN2VTs",
+  },
   title: {
     default: "ScholarBridge — Xorijda O'qish, Grant va Universitet Tanlash Platformasi",
     template: "%s | ScholarBridge",
