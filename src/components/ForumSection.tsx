@@ -76,14 +76,15 @@ export function ForumSection({ activeProfile, isModerator = false }: ForumSectio
   }, [sort, page, activeCategory]);
 
   const loadReports = useCallback(async () => {
+    if (!userId) return;
     try {
-      const res = await fetch("/api/forum/reports?status=open");
+      const res = await fetch(`/api/forum/reports?status=open&adminProfileId=${userId}`);
       const data = await res.json();
       if (data.reports) setReports(data.reports);
     } catch (err) {
       console.error(err);
     }
-  }, []);
+  }, [userId]);
 
   const openThreadById = useCallback(async (threadId: number) => {
     try {
@@ -238,11 +239,12 @@ export function ForumSection({ activeProfile, isModerator = false }: ForumSectio
   };
 
   const handleResolveReport = async (reportId: number) => {
+    if (!userId) return;
     try {
       await fetch(`/api/forum/reports/${reportId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "resolved" }),
+        body: JSON.stringify({ status: "resolved", adminProfileId: userId }),
       });
       loadReports();
     } catch (err) {
@@ -251,11 +253,12 @@ export function ForumSection({ activeProfile, isModerator = false }: ForumSectio
   };
 
   const handleDismissReport = async (reportId: number) => {
+    if (!userId) return;
     try {
       await fetch(`/api/forum/reports/${reportId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "dismissed" }),
+        body: JSON.stringify({ status: "dismissed", adminProfileId: userId }),
       });
       loadReports();
     } catch (err) {

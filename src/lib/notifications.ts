@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { notifications, notificationPreferences } from "@/db/schema";
+import { notifications, notificationPreferences, studentProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 /**
@@ -57,5 +57,29 @@ export async function notifyMany(
 ) {
   for (const id of profileIds) {
     await createNotification({ ...input, profileId: id });
+  }
+}
+
+/**
+ * Notify ALL admin profiles (is_admin = true). Used for site-wide events:
+ * new forum reports, new threads/replies, etc. Returns the admin ids that
+ * were notified (empty array when no admins exist).
+ */
+export async function notifyAdmins(
+  input: Omit<Parameters<typeof createNotification>[0], "profileId">
+): Promise<number[]> {
+  try {
+    const rows = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.isAdmin, true));
+    const adminIds = rows.map((r) => r.id);
+    if (adminIds.length > 0) {
+      await notifyMany(adminIds, input);
+    }
+    return adminIds;
+  } catch (err) {
+    console.error("Failed to notify admins:", err);
+    return [];
   }
 }

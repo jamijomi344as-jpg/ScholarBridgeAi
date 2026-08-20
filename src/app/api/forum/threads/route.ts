@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { forumThreads, forumReplies, forumLikes, studentProfiles, forumCategories } from "@/db/schema";
 import { eq, desc, and, count, sql } from "drizzle-orm";
 import { awardPoints } from "@/lib/gamification";
+import { notifyAdmins } from "@/lib/notifications";
 
 const PAGE_SIZE = 10;
 
@@ -129,6 +130,22 @@ export async function POST(req: Request) {
       await awardPoints(thread.authorId, 5, "thread_created", thread.id);
     } catch (err) {
       console.error("Failed to award thread points:", err);
+    }
+
+    // Notify admins about the new community thread (site activity).
+    try {
+      const [author] = await db
+        .select({ name: studentProfiles.name })
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, thread.authorId));
+      await notifyAdmins({
+        type: "forum_thread",
+        title: "💬 New community thread",
+        body: `${author?.name || "A student"} posted: ${String(title).slice(0, 100)}`,
+        link: `/forum`,
+      });
+    } catch (err) {
+      console.error("Failed to notify admins about new thread:", err);
     }
 
     return NextResponse.json({ thread });

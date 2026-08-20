@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { forumReplies, forumLikes, studentProfiles, forumThreads } from "@/db/schema";
 import { eq, and, count, asc, desc } from "drizzle-orm";
 import { awardPoints } from "@/lib/gamification";
+import { notifyAdmins } from "@/lib/notifications";
 
 export async function GET(req: Request) {
   try {
@@ -81,6 +82,19 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error("Failed to award reply points:", err);
     }
+
+    // Notify admins about the new reply (site activity).
+    try {
+      await notifyAdmins({
+        type: "forum_reply",
+        title: "💬 New forum reply",
+        body: `${author?.name || "A student"} replied in "${String(thread?.title || "").slice(0, 80)}": ${String(replyBody).slice(0, 100)}`,
+        link: `/forum`,
+      });
+    } catch (err) {
+      console.error("Failed to notify admins about new reply:", err);
+    }
+
     return NextResponse.json({ reply: { ...reply, authorName: author?.name || "Student" } });
   } catch (error) {
     console.error("POST /api/forum/replies error:", error);

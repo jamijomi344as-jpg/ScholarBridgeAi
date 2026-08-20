@@ -2,11 +2,19 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { forumReports, studentProfiles } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { isAdmin } from "@/lib/admin";
+import { notifyAdmins } from "@/lib/notifications";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "open";
+    const adminProfileId = searchParams.get("adminProfileId");
+
+    // Reports are sensitive — only admins may list them.
+    if (!(await isAdmin(adminProfileId))) {
+      return NextResponse.json({ error: "Forbidden: admin access required" }, { status: 403 });
+    }
 
     const rows = await db
       .select({
@@ -51,6 +59,19 @@ export async function POST(req: Request) {
         status: "open",
       })
       .returning();
+
+    // Notify every admin about the new report so it shows up in their
+    // notification bell immediately (spec §20).
+    try {
+      await notifyAdmins({
+        type: "forum_report",
+        title: "🛡️ New forum report",
+        body: `${targetType === "thread" ? "Thread" : "Reply"} #${targetId} reported: ${String(reason).slice(0, 120)}`,
+        link: `/forum?reports=open`,
+      });
+    } catch (err) {
+      console.error("Failed to notify admins about report:", err);
+    }
 
     return NextResponse.json({ report });
   } catch (error) {
