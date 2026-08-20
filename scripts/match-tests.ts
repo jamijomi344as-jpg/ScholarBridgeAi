@@ -1,4 +1,4 @@
-import { calculateUniversityMatch } from "/home/user/ScholarBridgeAi/src/lib/matching";
+import { calculateUniversityMatch } from "../src/lib/matching";
 
 const uni = {
   id: 23,
