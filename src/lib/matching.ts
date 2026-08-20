@@ -60,8 +60,10 @@ export interface ScholarshipData {
 
 export function calculateUniversityMatch(profile: StudentProfileData, uni: UniversityData) {
   let score = 70;
-  const reasons: string[] = [];
-  const potentialIssues: string[] = [];
+  // Weighted reasons/issues — ranked by importance so the UI can show the
+  // 2 most important + and the 2 biggest − (spec §23 — explain the score).
+  const reasons: { text: string; weight: number }[] = [];
+  const potentialIssues: { text: string; weight: number }[] = [];
 
   // Normalize GPA to 4.0 scale (spec §23 — explain the score)
   const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
@@ -71,33 +73,66 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
     const gpaDiff = normGpa - uni.minGpa;
     if (gpaDiff >= 0.5) {
       score += 15;
-      reasons.push(`GPA ${normGpa.toFixed(2)} well above the ${uni.minGpa} minimum`);
+      reasons.push({ text: `GPA ${normGpa.toFixed(2)} well above the ${uni.minGpa} minimum`, weight: 15 });
     } else if (gpaDiff >= 0.2) {
       score += 10;
-      reasons.push(`GPA ${normGpa.toFixed(2)} above the ${uni.minGpa} minimum`);
+      reasons.push({ text: `GPA ${normGpa.toFixed(2)} above the ${uni.minGpa} minimum`, weight: 10 });
     } else if (gpaDiff >= 0) {
       score += 5;
-      reasons.push(`GPA ${normGpa.toFixed(2)} meets the ${uni.minGpa} minimum`);
+      reasons.push({ text: `GPA ${normGpa.toFixed(2)} meets the ${uni.minGpa} minimum`, weight: 5 });
     } else if (gpaDiff >= -0.3) {
       score -= 12;
-      potentialIssues.push(`GPA ${normGpa.toFixed(2)} slightly below the ${uni.minGpa} minimum`);
+      potentialIssues.push({ text: `GPA ${normGpa.toFixed(2)} slightly below the ${uni.minGpa} minimum`, weight: 12 });
     } else {
       score -= 25;
-      potentialIssues.push(`GPA ${normGpa.toFixed(2)} is below the ${uni.minGpa} requirement`);
+      potentialIssues.push({ text: `GPA ${normGpa.toFixed(2)} is below the ${uni.minGpa} requirement`, weight: 25 });
     }
   }
 
-  // Language Requirement Check — only when specified.
-  if (profile.ieltsScore && uni.minIelts != null) {
-    if (profile.ieltsScore >= uni.minIelts + 0.5) {
+  // Language Requirement (IELTS) — a missing test is a real penalty:
+  // a university that requires IELTS must NEVER show a 98% match for a
+  // student without an IELTS score (spec §23, §19).
+  if (uni.minIelts != null) {
+    const hasIelts = typeof profile.ieltsScore === "number" && profile.ieltsScore > 0;
+    if (!hasIelts) {
+      score -= 25;
+      potentialIssues.push({
+        text: `IELTS ${uni.minIelts} required — you don't have an IELTS score yet`,
+        weight: 25,
+      });
+    } else if (profile.ieltsScore! >= uni.minIelts + 0.5) {
       score += 8;
-      reasons.push(`IELTS ${profile.ieltsScore} above the ${uni.minIelts} requirement`);
-    } else if (profile.ieltsScore >= uni.minIelts) {
+      reasons.push({ text: `IELTS ${profile.ieltsScore} above the ${uni.minIelts} requirement`, weight: 8 });
+    } else if (profile.ieltsScore! >= uni.minIelts) {
       score += 4;
-      reasons.push(`IELTS ${profile.ieltsScore} meets the ${uni.minIelts} requirement`);
+      reasons.push({ text: `IELTS ${profile.ieltsScore} meets the ${uni.minIelts} requirement`, weight: 4 });
+    } else {
+      score -= 20;
+      potentialIssues.push({
+        text: `IELTS ${uni.minIelts} required — you have ${profile.ieltsScore}`,
+        weight: 20,
+      });
+    }
+  }
+
+  // SAT — only when the university officially specifies a minimum.
+  if (uni.minSat != null) {
+    const hasSat = typeof profile.satScore === "number" && profile.satScore > 0;
+    if (!hasSat) {
+      score -= 20;
+      potentialIssues.push({
+        text: `SAT ${uni.minSat} required — you don't have an SAT score yet`,
+        weight: 20,
+      });
+    } else if (profile.satScore! >= uni.minSat) {
+      score += 6;
+      reasons.push({ text: `SAT ${profile.satScore} meets the ${uni.minSat} requirement`, weight: 6 });
     } else {
       score -= 15;
-      potentialIssues.push(`IELTS ${profile.ieltsScore} below the ${uni.minIelts} minimum`);
+      potentialIssues.push({
+        text: `SAT ${uni.minSat} required — you have ${profile.satScore}`,
+        weight: 15,
+      });
     }
   }
 
@@ -111,17 +146,15 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
     const totalUniCost = uni.annualTuitionUsd + (uni.annualLivingEstUsd ?? 0);
     if (profile.budgetAnnualUsd >= totalUniCost) {
       score += 10;
-      reasons.push(`Estimated cost $${totalUniCost.toLocaleString()}/yr fits your budget`);
+      reasons.push({ text: `Estimated cost $${totalUniCost.toLocaleString()}/yr fits your budget`, weight: 10 });
     } else {
       const budgetDeficit = totalUniCost - profile.budgetAnnualUsd;
-      potentialIssues.push(
-        `Estimated cost $${totalUniCost.toLocaleString()}/yr exceeds your $${profile.budgetAnnualUsd.toLocaleString()} budget`
-      );
-      if (budgetDeficit > 30000 && !profile.needScholarship) {
-        score -= 20;
-      } else if (budgetDeficit > 15000) {
-        score -= 10;
-      }
+      const weight = budgetDeficit > 30000 && !profile.needScholarship ? 20 : 10;
+      score -= weight;
+      potentialIssues.push({
+        text: `Estimated cost $${totalUniCost.toLocaleString()}/yr exceeds your $${profile.budgetAnnualUsd.toLocaleString()} budget`,
+        weight,
+      });
     }
   }
 
@@ -139,13 +172,13 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
 
   if (preferredList.some(c => c.toLowerCase() === uni.country.toLowerCase())) {
     score += 8;
-    reasons.push(`${uni.country} is on your preferred list`);
+    reasons.push({ text: `${uni.country} is on your preferred list`, weight: 8 });
   }
 
   // Research / Work Experience Boost for Master/PhD or top ranking
   if ((profile.researchPublications || 0) > 0 || (profile.workExperienceYears || 0) > 0) {
     score += 5;
-    reasons.push("Research / work experience strengthens your application");
+    reasons.push({ text: "Research / work experience strengthens your application", weight: 5 });
   }
 
   // Clamp Score
@@ -161,11 +194,16 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
     matchCategory = "Reach";
   }
 
+  // Ranked output: the 2 most important positives and the 2 biggest
+  // negatives — a missing requirement is always visible as a "−".
+  reasons.sort((a, b) => b.weight - a.weight);
+  potentialIssues.sort((a, b) => b.weight - a.weight);
+
   return {
     matchScore,
     matchCategory,
-    reasons: reasons.slice(0, 4),
-    potentialIssues: potentialIssues.slice(0, 3),
+    reasons: reasons.slice(0, 2).map(r => r.text),
+    potentialIssues: potentialIssues.slice(0, 2).map(i => i.text),
   };
 }
 

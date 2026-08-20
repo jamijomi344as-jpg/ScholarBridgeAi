@@ -399,7 +399,7 @@ export function UniversityExplorer({
                         {uni.matchIssues?.map((r, i) => (
                           <p key={`p${i}`} className="text-[10px] text-amber-700 flex items-start gap-1">
                             <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                            <span><b>Potential issue:</b> {r}</span>
+                            <span><b>Why lower:</b> {r}</span>
                           </p>
                         ))}
                       </div>
