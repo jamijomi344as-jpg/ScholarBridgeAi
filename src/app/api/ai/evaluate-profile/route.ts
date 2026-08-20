@@ -56,6 +56,10 @@ Make the tone encouraging, professional, precise, and practical.`;
     const systemInstruction = "You are ScholarBridge's senior AI Admissions Strategist. Provide structured, practical markdown evaluation with clear actionable insights.";
 
     let evaluationResult = await callAI(prompt, systemInstruction, { taskType: "admissions", profileId });
+    // aiUsed=true only when the AI provider actually returned an evaluation.
+    // When AI is unavailable the route returns a built-in estimate flagged
+    // as fallback so the UI never presents fixed info as "AI analysis".
+    const aiUsed = Boolean(evaluationResult);
 
     if (!evaluationResult) {
       // Fallback realistic AI evaluation
@@ -119,7 +123,7 @@ ${profile.needScholarship ? `- **Fulbright Foreign Student Program:** Full tuiti
       content: evaluationResult,
     });
 
-    return NextResponse.json({ evaluation: evaluationResult });
+    return NextResponse.json({ evaluation: evaluationResult, aiUsed });
   } catch (error) {
     console.error("POST /api/ai/evaluate-profile error:", error);
     return NextResponse.json({ error: "Failed to evaluate profile" }, { status: 500 });

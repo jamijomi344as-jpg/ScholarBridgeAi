@@ -38,6 +38,8 @@ export function DashboardView({
   onEditProfile,
 }: DashboardViewProps) {
   const [aiEvaluation, setAiEvaluation] = useState<string | null>(null);
+  const [aiEvaluationUsed, setAiEvaluationUsed] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
   if (!profile) {
@@ -50,6 +52,8 @@ export function DashboardView({
 
   const runAiAudit = async () => {
     setIsEvaluating(true);
+    setAiUnavailable(false);
+    setAiEvaluation(null);
     try {
       const res = await fetch("/api/ai/evaluate-profile", {
         method: "POST",
@@ -58,7 +62,14 @@ export function DashboardView({
       });
       const data = await res.json();
       if (data.evaluation) {
-        setAiEvaluation(data.evaluation);
+        // Real AI analysis is shown only when the AI provider answered.
+        // The built-in estimate (aiUsed=false) is never presented as AI.
+        setAiEvaluationUsed(Boolean(data.aiUsed));
+        if (data.aiUsed) {
+          setAiEvaluation(data.evaluation);
+        } else {
+          setAiUnavailable(true);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -216,8 +227,9 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* AI Evaluation Report Output Modal/Card */}
-      {aiEvaluation && (
+      {/* AI Evaluation Report Output Modal/Card — real AI output only.
+          The built-in fallback estimate is never shown as "AI analysis". */}
+      {aiEvaluation && aiEvaluationUsed && (
         <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-lg space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 text-indigo-700 font-bold text-lg">
@@ -235,6 +247,28 @@ export function DashboardView({
           <div className="prose prose-indigo max-w-none text-xs sm:text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
             {aiEvaluation}
           </div>
+        </div>
+      )}
+
+      {/* AI unavailable notice — same rule as the sidebar: don't show a fake
+          "AI analysis" when the AI provider is not connected. */}
+      {aiUnavailable && (
+        <div className="bg-white rounded-2xl p-5 border border-amber-200 bg-amber-50/60 space-y-2">
+          <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
+            <AlertCircle className="h-4 w-4" />
+            AI analysis not available yet
+          </div>
+          <p className="text-xs text-amber-700 leading-relaxed">
+            The AI provider is not connected on the server (OPENROUTER_API_KEY not configured).
+            Once it is set, the real AI evaluation will appear here. The built-in estimate is
+            hidden so it is never mistaken for AI analysis.
+          </p>
+          <button
+            onClick={() => setAiUnavailable(false)}
+            className="text-[11px] font-bold text-amber-800 underline"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

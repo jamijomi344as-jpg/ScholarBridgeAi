@@ -85,22 +85,27 @@ export function Navbar({
     { id: "universities", label: "University Explorer", icon: Search },
     { id: "scholarships", label: "Scholarship Hub", icon: Award },
     { id: "tracker", label: "My Applications", icon: GraduationCap },
-    { id: "deadlines", label: "Deadlines", icon: CalendarClock, premium: true },
+    // Hidden until ready: code kept, UI hidden (feature not yet live).
+    { id: "deadlines", label: "Deadlines", icon: CalendarClock, premium: true, hidden: true },
     { id: "sop", label: "AI SOP & Essays", icon: FileText, premium: true },
     { id: "tasks", label: "Tasks & Roadmap", icon: CheckSquare, premium: true },
     { id: "chat", label: "AI Mentor", icon: Bot },
     { id: "forum", label: "Community Forum", icon: MessagesSquare, premium: true },
-    { id: "courses", label: "Courses", icon: Video, premium: true },
+    // Hidden until ready: code kept, UI hidden (feature not yet live).
+    { id: "courses", label: "Courses", icon: Video, premium: true, hidden: true },
     { id: "payments", label: "Premium", icon: Crown },
     { id: "rewards", label: "Rewards & Referrals", icon: Gift },
-    { id: "consulting", label: "Consulting", icon: Headset },
+    // Hidden until ready: code kept, UI hidden (feature not yet live).
+    { id: "consulting", label: "Consulting", icon: Headset, hidden: true },
   ];
 
-  // Admin sees an extra management tab.
+  // Admin sees an extra management tab. Hidden items stay in the code but are
+  // never rendered (feature not ready — no dead navigation).
   const isAdmin = !!activeProfile?.isAdmin;
+  const visibleItems = navItems.filter((item) => !item.hidden);
   const displayItems = isAdmin
-    ? [...navItems, { id: "admin", label: "Admin Panel", icon: Crown }]
-    : navItems;
+    ? [...visibleItems, { id: "admin", label: "Admin Panel", icon: Crown }]
+    : visibleItems;
 
   const Logo = (
     <div className="flex items-center gap-2.5">
