@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { StudentProfile } from "./Navbar";
+import { STUDY_FIELD_CATEGORIES, STUDY_FIELDS } from "@/lib/studyFields";
 
 interface OnboardingWizardProps {
   /**
@@ -366,16 +367,46 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
 
         {/* STEP 3 — Target major */}
         {step === 2 && (
-          <div>
-            <input
-              className={inputCls}
-              placeholder="e.g. Data Science & AI, Business Administration, Mechanical Engineering…"
-              value={form.targetMajor}
-              onChange={(e) => set("targetMajor", e.target.value)}
-            />
-            <p className="text-[11px] text-slate-400 mt-2">
-              A clear major helps us find universities and grants that fit you.
-            </p>
+          <div className="space-y-4">
+            <div>
+              <label className={labelCls}>Target Major / Field</label>
+              <input
+                list="onboarding-study-fields"
+                className={inputCls}
+                placeholder="Choose a field or type your own…"
+                value={form.targetMajor}
+                onChange={(e) => set("targetMajor", e.target.value)}
+              />
+              <datalist id="onboarding-study-fields">
+                {STUDY_FIELDS.map((field) => <option key={field} value={field} />)}
+              </datalist>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Choose from the curated fields below or type a more specific major. A clear field helps us find universities and grants that fit you.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {STUDY_FIELD_CATEGORIES.map((category) => (
+                <div key={category.name} className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-[11px] font-bold text-slate-600 mb-2">{category.name}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {category.fields.map((field) => (
+                      <button
+                        key={field}
+                        type="button"
+                        onClick={() => set("targetMajor", field)}
+                        className={`rounded-lg px-2 py-1 text-[10px] font-semibold transition-colors ${
+                          form.targetMajor === field
+                            ? "bg-indigo-600 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                        }`}
+                      >
+                        {field}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
