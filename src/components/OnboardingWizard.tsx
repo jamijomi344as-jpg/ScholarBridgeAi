@@ -193,7 +193,7 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
       const res = await fetch(`/api/profiles/${createdId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, requesterId: createdId }),
       });
       const data = await res.json();
       if (!res.ok || !data.profile) throw new Error(data.error || "Could not save profile");

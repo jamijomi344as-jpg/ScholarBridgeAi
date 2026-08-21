@@ -50,23 +50,35 @@ export async function POST(req: Request) {
       }
     }
 
+    // NEVER fabricate academic data (spec §19): empty/missing test scores
+    // are stored as NULL, not fake defaults (7.0/95/1350/315/3.5).
+    const numOrNull = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    // Test scores must be positive — a 0 (or negative) is not a real score.
+    const scoreOrNull = (v: unknown): number | null => {
+      const n = numOrNull(v);
+      return n !== null && n > 0 ? n : null;
+    };
     const [newProfile] = await db.insert(studentProfiles).values({
       name: body.name || "New Student Profile",
       email: body.email || "student@scholarbridge.edu",
       degreeLevel: body.degreeLevel || "Master",
       targetMajor: body.targetMajor || "Computer Science",
-      gpa: Number(body.gpa) || 3.5,
-      gpaScale: Number(body.gpaScale) || 4.0,
-      ieltsScore: body.ieltsScore ? Number(body.ieltsScore) : 7.0,
-      toeflScore: body.toeflScore ? Number(body.toeflScore) : 95,
-      satScore: body.satScore ? Number(body.satScore) : 1350,
-      greScore: body.greScore ? Number(body.greScore) : 315,
-      budgetAnnualUsd: Number(body.budgetAnnualUsd) || 25000,
+      gpa: numOrNull(body.gpa) ?? 3.5, // schema default; real GPA entered later
+      gpaScale: numOrNull(body.gpaScale) ?? 4.0,
+      ieltsScore: scoreOrNull(body.ieltsScore),
+      toeflScore: scoreOrNull(body.toeflScore),
+      satScore: scoreOrNull(body.satScore),
+      greScore: scoreOrNull(body.greScore),
+      budgetAnnualUsd: numOrNull(body.budgetAnnualUsd) ?? 25000,
       preferredCountries: countriesStr,
       needScholarship: body.needScholarship ?? true,
       extracurriculars: body.extracurriculars || "",
-      workExperienceYears: Number(body.workExperienceYears) || 0,
-      researchPublications: Number(body.researchPublications) || 0,
+      workExperienceYears: numOrNull(body.workExperienceYears) ?? 0,
+      researchPublications: numOrNull(body.researchPublications) ?? 0,
       preferredLocale: body.preferredLocale || "en",
     }).returning();
 

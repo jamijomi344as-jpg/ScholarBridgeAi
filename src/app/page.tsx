@@ -251,7 +251,7 @@ export default function Home() {
     }
   };
 
-  const handleSaveProfile = async (formData: Partial<StudentProfile>) => {
+  const handleSaveProfile = async (formData: Omit<Partial<StudentProfile>, "gpa"> & { gpa?: number | null }) => {
     // NOTE: errors are intentionally NOT swallowed here — they propagate to
     // ProfileModal so the user sees a clear message instead of a silent fail.
     if (isNewProfile) {
@@ -279,7 +279,7 @@ export default function Home() {
       const res = await fetch(`/api/profiles/${activeProfile.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, requesterId: activeProfile.id }),
       });
       const data = await res.json();
       if (!res.ok || !data.profile) {
@@ -397,7 +397,7 @@ export default function Home() {
       await fetch(`/api/profiles/${activeProfile.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferredLocale: locale }),
+        body: JSON.stringify({ preferredLocale: locale, requesterId: activeProfile.id }),
       });
       setActiveProfile((prev) => (prev ? { ...prev, preferredLocale: locale } : prev));
     } catch (err) {

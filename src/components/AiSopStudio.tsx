@@ -196,7 +196,7 @@ export function AiSopStudio({ activeProfile }: AiSopStudioProps) {
 
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
                 <span className="font-bold text-slate-800">Auto-Included Profile Context:</span>
-                <p>GPA: {activeProfile?.gpa}/{activeProfile?.gpaScale} • Test: IELTS {activeProfile?.ieltsScore || "7.5"} • {activeProfile?.researchPublications || 0} Pubs • {activeProfile?.workExperienceYears || 0} yrs Exp</p>
+                <p>GPA: {activeProfile?.gpa}/{activeProfile?.gpaScale} • Test: IELTS {activeProfile?.ieltsScore ?? "Not set"} • {activeProfile?.researchPublications || 0} Pubs • {activeProfile?.workExperienceYears || 0} yrs Exp</p>
               </div>
 
               <button

@@ -62,10 +62,13 @@ Make the tone encouraging, professional, precise, and practical.`;
     const aiUsed = Boolean(evaluationResult);
 
     if (!evaluationResult) {
-      // Fallback realistic AI evaluation
+      // Fallback realistic AI evaluation (honest scoring: missing IELTS = 0,
+      // no experience/pubs = 0, same rule as the dashboard Admissions Index).
       const normGpa = Math.min(4.0, profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa);
       const gpaPercent = Math.round((normGpa / 4.0) * 100);
-      const compositeScore = Math.min(96, Math.max(65, Math.round(gpaPercent * 0.5 + ((profile.ieltsScore || 6.5) / 9) * 25 + ((profile.workExperienceYears || 0) > 0 ? 10 : 5) + ((profile.researchPublications || 0) > 0 ? 10 : 5))));
+      const hasIelts = typeof profile.ieltsScore === "number" && profile.ieltsScore > 0;
+      const ieltsPoints = hasIelts ? (profile.ieltsScore! / 9) * 25 : 0;
+      const compositeScore = Math.min(96, Math.max(30, Math.round(gpaPercent * 0.5 + ieltsPoints + ((profile.workExperienceYears || 0) > 0 ? 10 : 0) + ((profile.researchPublications || 0) > 0 ? 10 : 0))));
 
       evaluationResult = `### 📊 Overall Profile Score & Readiness Assessment
 **Profile Readiness Score: ${compositeScore} / 100** *(Competitive Global Candidate)*

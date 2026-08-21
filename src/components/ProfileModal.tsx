@@ -10,26 +10,44 @@ interface ProfileModalProps {
   isNew: boolean;
   onClose: () => void;
   profile: StudentProfile | null;
-  onSave: (data: Partial<StudentProfile>) => Promise<void>;
+  onSave: (data: Omit<Partial<StudentProfile>, "gpa"> & { gpa?: number | null }) => Promise<void>;
 }
 
 export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: ProfileModalProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    email: string;
+    degreeLevel: string;
+    targetMajor: string;
+    gpa: number | string;
+    gpaScale: number;
+    ieltsScore: number | string;
+    toeflScore: number | string;
+    satScore: number | string;
+    greScore: number | string;
+    budgetAnnualUsd: number;
+    preferredCountries: string[];
+    needScholarship: boolean;
+    extracurriculars: string;
+    workExperienceYears: number;
+    researchPublications: number;
+  }>({
     name: "",
     email: "",
     degreeLevel: "Master",
     targetMajor: "Computer Science",
-    gpa: 3.6,
+    // No fabricated test scores: empty fields stay empty until entered.
+    gpa: "",
     gpaScale: 4.0,
-    ieltsScore: 7.5,
-    toeflScore: 100,
-    satScore: 1400,
-    greScore: 315,
+    ieltsScore: "",
+    toeflScore: "",
+    satScore: "",
+    greScore: "",
     budgetAnnualUsd: 25000,
     preferredCountries: ["United States", "United Kingdom", "Canada", "Germany"],
     needScholarship: true,
     extracurriculars: "",
-    workExperienceYears: 1,
+    workExperienceYears: 0,
     researchPublications: 0,
   });
 
@@ -54,12 +72,15 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
         email: profile.email || "",
         degreeLevel: profile.degreeLevel || "Master",
         targetMajor: profile.targetMajor || "Computer Science",
-        gpa: profile.gpa || 3.5,
+        // NEVER fabricate values: empty fields stay empty instead of being
+        // saved as fake defaults (7.0/95/1350/315) when a profile has no
+        // test scores yet.
+        gpa: profile.gpa ?? "",
         gpaScale: profile.gpaScale || 4.0,
-        ieltsScore: profile.ieltsScore ?? 7.0,
-        toeflScore: profile.toeflScore ?? 95,
-        satScore: profile.satScore ?? 1350,
-        greScore: profile.greScore ?? 315,
+        ieltsScore: profile.ieltsScore ?? "",
+        toeflScore: profile.toeflScore ?? "",
+        satScore: profile.satScore ?? "",
+        greScore: profile.greScore ?? "",
         budgetAnnualUsd: profile.budgetAnnualUsd || 25000,
         preferredCountries: countries,
         needScholarship: profile.needScholarship ?? true,
@@ -69,21 +90,23 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
       });
     } else if (isNew) {
       setFormData({
-        name: "New Student",
-        email: "student@university.edu",
+        name: "",
+        email: "",
         degreeLevel: "Master",
-        targetMajor: "Data Science & AI",
-        gpa: 3.5,
+        targetMajor: "",
+        // Never pre-fill fabricated academic data — the student enters
+        // their real GPA/test scores (NULL-safe, spec §19).
+        gpa: "",
         gpaScale: 4.0,
-        ieltsScore: 7.0,
-        toeflScore: 95,
-        satScore: 1350,
-        greScore: 315,
-        budgetAnnualUsd: 20000,
-        preferredCountries: ["United States", "Canada", "Germany", "United Kingdom"],
+        ieltsScore: "",
+        toeflScore: "",
+        satScore: "",
+        greScore: "",
+        budgetAnnualUsd: 25000,
+        preferredCountries: ["United States", "United Kingdom", "Canada", "Germany"],
         needScholarship: true,
-        extracurriculars: "Student Council, Programming Club, Open Source Contributor",
-        workExperienceYears: 1,
+        extracurriculars: "",
+        workExperienceYears: 0,
         researchPublications: 0,
       });
     }
@@ -132,8 +155,18 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
     setIsSubmitting(true);
     setErrorMsg("");
     try {
+      const {
+        gpa, ieltsScore, toeflScore, satScore, greScore,
+        ...rest
+      } = formData;
       await onSave({
-        ...formData,
+        ...rest,
+        // Empty test-score fields are saved as null (NULL in DB), never 0.
+        gpa: gpa === "" ? null : Number(gpa),
+        ieltsScore: ieltsScore === "" ? null : Number(ieltsScore),
+        toeflScore: toeflScore === "" ? null : Number(toeflScore),
+        satScore: satScore === "" ? null : Number(satScore),
+        greScore: greScore === "" ? null : Number(greScore),
         preferredCountries: JSON.stringify(formData.preferredCountries),
       });
       onClose();
@@ -246,7 +279,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
                     max="100"
                     required
                     value={formData.gpa}
-                    onChange={(e) => setFormData({ ...formData, gpa: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, gpa: e.target.value === "" ? "" : parseFloat(e.target.value) || 0 })}
                     className="w-2/3 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                   <select
@@ -273,7 +306,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
                   min="0"
                   max="9.0"
                   value={formData.ieltsScore || ""}
-                  onChange={(e) => setFormData({ ...formData, ieltsScore: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => setFormData({ ...formData, ieltsScore: e.target.value === "" ? "" : parseFloat(e.target.value) || 0 })}
                   className="w-full px-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   placeholder="e.g. 7.5"
                 />
@@ -285,7 +318,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
                   min="0"
                   max="120"
                   value={formData.toeflScore || ""}
-                  onChange={(e) => setFormData({ ...formData, toeflScore: parseInt(e.target.value, 10) || 0 })}
+                  onChange={(e) => setFormData({ ...formData, toeflScore: e.target.value === "" ? "" : parseInt(e.target.value, 10) || 0 })}
                   className="w-full px-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   placeholder="e.g. 100"
                 />
@@ -297,7 +330,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
                   min="400"
                   max="1600"
                   value={formData.satScore || ""}
-                  onChange={(e) => setFormData({ ...formData, satScore: parseInt(e.target.value, 10) || 0 })}
+                  onChange={(e) => setFormData({ ...formData, satScore: e.target.value === "" ? "" : parseInt(e.target.value, 10) || 0 })}
                   className="w-full px-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   placeholder="e.g. 1420"
                 />
@@ -309,7 +342,7 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
                   min="260"
                   max="340"
                   value={formData.greScore || ""}
-                  onChange={(e) => setFormData({ ...formData, greScore: parseInt(e.target.value, 10) || 0 })}
+                  onChange={(e) => setFormData({ ...formData, greScore: e.target.value === "" ? "" : parseInt(e.target.value, 10) || 0 })}
                   className="w-full px-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   placeholder="e.g. 320"
                 />

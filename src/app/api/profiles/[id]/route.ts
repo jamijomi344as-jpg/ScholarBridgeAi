@@ -3,6 +3,20 @@ import { db } from "@/db";
 import { studentProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { completeReferralIfDue, activateReferralReward } from "@/lib/referrals";
+import { isAdmin } from "@/lib/admin";
+
+/**
+ * Authorization: the profile owner may read/update their own profile; an
+ * admin (is_admin) may read/update/delete any profile. A bare profileId in
+ * the body is never enough — the requester must prove who they are via
+ * requesterId (and admins additionally via is_admin).
+ */
+async function canModify(requesterId: unknown, targetProfileId: number): Promise<"own" | "admin" | false> {
+  const id = Number(requesterId);
+  if (!Number.isFinite(id) || id <= 0) return false;
+  if (id === targetProfileId) return "own";
+  return (await isAdmin(id)) ? "admin" : false;
+}
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,6 +41,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const profileId = parseInt(id, 10);
     const body = await req.json();
 
+    // Authorization: own profile or admin.
+    const access = await canModify(body.requesterId ?? body.userId, profileId);
+    if (!access) {
+      return NextResponse.json({ error: "Forbidden: you can only edit your own profile" }, { status: 403 });
+    }
+
     let countriesStr = body.preferredCountries;
     if (Array.isArray(body.preferredCountries)) {
       countriesStr = JSON.stringify(body.preferredCountries);
@@ -40,10 +60,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         targetMajor: body.targetMajor !== undefined ? body.targetMajor : undefined,
         gpa: body.gpa !== undefined ? Number(body.gpa) : undefined,
         gpaScale: body.gpaScale !== undefined ? Number(body.gpaScale) : undefined,
-        ieltsScore: body.ieltsScore !== undefined ? (body.ieltsScore === null ? null : Number(body.ieltsScore)) : undefined,
-        toeflScore: body.toeflScore !== undefined ? (body.toeflScore === null ? null : Number(body.toeflScore)) : undefined,
-        satScore: body.satScore !== undefined ? (body.satScore === null ? null : Number(body.satScore)) : undefined,
-        greScore: body.greScore !== undefined ? (body.greScore === null ? null : Number(body.greScore)) : undefined,
+        // Test scores: null/0/negative -> NULL (a 0 is not a real score).
+        ieltsScore: body.ieltsScore !== undefined ? (body.ieltsScore === null || Number(body.ieltsScore) <= 0 ? null : Number(body.ieltsScore)) : undefined,
+        toeflScore: body.toeflScore !== undefined ? (body.toeflScore === null || Number(body.toeflScore) <= 0 ? null : Number(body.toeflScore)) : undefined,
+        satScore: body.satScore !== undefined ? (body.satScore === null || Number(body.satScore) <= 0 ? null : Number(body.satScore)) : undefined,
+        greScore: body.greScore !== undefined ? (body.greScore === null || Number(body.greScore) <= 0 ? null : Number(body.greScore)) : undefined,
         budgetAnnualUsd: body.budgetAnnualUsd !== undefined ? Number(body.budgetAnnualUsd) : undefined,
         preferredCountries: countriesStr,
         needScholarship: body.needScholarship !== undefined ? body.needScholarship : undefined,
@@ -93,6 +114,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const { id } = await params;
     const profileId = parseInt(id, 10);
+    const { searchParams } = new URL(req.url);
+
+    // Only an admin may delete a profile (deleting is destructive).
+    if (!(await isAdmin(searchParams.get("requesterId")))) {
+      return NextResponse.json({ error: "Forbidden: admin access required" }, { status: 403 });
+    }
+
     await db.delete(studentProfiles).where(eq(studentProfiles.id, profileId));
     return NextResponse.json({ success: true });
   } catch (error) {
