@@ -5,7 +5,7 @@ import { generateReferralCode, awardPoints, computeProfileCompleteness } from "@
 import { getConfigNumber } from "@/lib/config";
 
 export const REFERRAL_LINK_BASE =
-  process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridge-qhvw.onrender.com";
+  process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridgeai-1.onrender.com";
 export const REFERRAL_PREMIUM_MULTIPLE = 5;
 export const REFERRAL_PREMIUM_DAYS = 30;
 
