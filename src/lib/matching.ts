@@ -66,7 +66,7 @@ export function calculateUniversityMatch(profile: StudentProfileData, uni: Unive
   const potentialIssues: { text: string; weight: number }[] = [];
 
   // Normalize GPA to 4.0 scale (spec §23 — explain the score)
-  const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
+  const normGpa = Math.min(4.0, profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa);
 
   // GPA — only when the university officially specifies a minimum (spec §14).
   if (uni.minGpa != null) {
@@ -213,7 +213,7 @@ export function calculateScholarshipMatch(profile: StudentProfileData, scholarsh
   const potentialIssues: string[] = [];
 
   // GPA check (spec §22 — explain WHY it matches)
-  const normGpa = profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa;
+  const normGpa = Math.min(4.0, profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa);
   if (scholarship.minGpa) {
     if (normGpa >= scholarship.minGpa + 0.4) {
       score += 15;

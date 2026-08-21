@@ -69,7 +69,7 @@ export function DashboardView({
   // Admissions Index — deterministic quick estimate (NOT AI).
   // Same honesty rule as the match scorer: a missing IELTS is NOT treated
   // as 6.5 — it contributes 0 points. No work/pub = 0 points.
-  const normGpa = (profile.gpa / profile.gpaScale) * 4.0;
+  const normGpa = Math.min(4.0, profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa);
   const gpaPercent = Math.round((normGpa / 4.0) * 100);
   const hasIelts = typeof profile.ieltsScore === "number" && profile.ieltsScore > 0;
   const ieltsPoints = hasIelts ? (profile.ieltsScore! / 9) * 25 : 0;

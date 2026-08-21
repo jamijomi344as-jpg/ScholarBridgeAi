@@ -388,7 +388,7 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
                 type="number"
                 step="0.01"
                 min="0"
-                max="5"
+                max={Number(form.gpaScale) || 4}
                 className={inputCls}
                 placeholder="3.5"
                 value={form.gpa}

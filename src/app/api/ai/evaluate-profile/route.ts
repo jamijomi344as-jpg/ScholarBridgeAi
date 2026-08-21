@@ -63,7 +63,7 @@ Make the tone encouraging, professional, precise, and practical.`;
 
     if (!evaluationResult) {
       // Fallback realistic AI evaluation
-      const normGpa = (profile.gpa / profile.gpaScale) * 4.0;
+      const normGpa = Math.min(4.0, profile.gpaScale > 0 ? (profile.gpa / profile.gpaScale) * 4.0 : profile.gpa);
       const gpaPercent = Math.round((normGpa / 4.0) * 100);
       const compositeScore = Math.min(96, Math.max(65, Math.round(gpaPercent * 0.5 + ((profile.ieltsScore || 6.5) / 9) * 25 + ((profile.workExperienceYears || 0) > 0 ? 10 : 5) + ((profile.researchPublications || 0) > 0 ? 10 : 5))));
 
