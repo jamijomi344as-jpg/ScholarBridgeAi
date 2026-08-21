@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { StudentProfile } from "./Navbar";
-import { STUDY_FIELD_CATEGORIES, STUDY_FIELDS } from "@/lib/studyFields";
+import { STUDY_FIELD_CATEGORIES } from "@/lib/studyFields";
 
 interface OnboardingWizardProps {
   /**
@@ -370,42 +370,23 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
           <div className="space-y-4">
             <div>
               <label className={labelCls}>Target Major / Field</label>
-              <input
-                list="onboarding-study-fields"
+              <select
                 className={inputCls}
-                placeholder="Choose a field or type your own…"
                 value={form.targetMajor}
                 onChange={(e) => set("targetMajor", e.target.value)}
-              />
-              <datalist id="onboarding-study-fields">
-                {STUDY_FIELDS.map((field) => <option key={field} value={field} />)}
-              </datalist>
-              <p className="text-[11px] text-slate-400 mt-2">
-                Choose from the curated fields below or type a more specific major. A clear field helps us find universities and grants that fit you.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {STUDY_FIELD_CATEGORIES.map((category) => (
-                <div key={category.name} className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-[11px] font-bold text-slate-600 mb-2">{category.name}</p>
-                  <div className="flex flex-wrap gap-1.5">
+              >
+                <option value="" disabled>Select your target program…</option>
+                {STUDY_FIELD_CATEGORIES.map((category) => (
+                  <optgroup key={category.name} label={category.name}>
                     {category.fields.map((field) => (
-                      <button
-                        key={field}
-                        type="button"
-                        onClick={() => set("targetMajor", field)}
-                        className={`rounded-lg px-2 py-1 text-[10px] font-semibold transition-colors ${
-                          form.targetMajor === field
-                            ? "bg-indigo-600 text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
-                        }`}
-                      >
-                        {field}
-                      </button>
+                      <option key={field} value={field}>{field}</option>
                     ))}
-                  </div>
-                </div>
-              ))}
+                  </optgroup>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Select the program you plan to study. We use it to find matching universities and scholarships.
+              </p>
             </div>
           </div>
         )}
