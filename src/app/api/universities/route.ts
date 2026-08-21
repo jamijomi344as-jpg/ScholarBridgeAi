@@ -124,11 +124,11 @@ export async function GET(req: Request) {
     // ---------- Map match scores ----------
     const results = allUnis.map(uni => {
       let matchInfo: {
-        matchScore: number;
-        matchCategory: "Reach" | "Match" | "Safety";
+        matchScore: number | null;
+        matchCategory: "Reach" | "Match" | "Safety" | null;
         reasons?: string[];
         potentialIssues?: string[];
-      } = { matchScore: 80, matchCategory: "Match", reasons: [], potentialIssues: [] };
+      } = { matchScore: null, matchCategory: null, reasons: [], potentialIssues: [] };
       if (profileData) {
         matchInfo = calculateUniversityMatch(profileData, uni);
       }
@@ -159,7 +159,13 @@ export async function GET(req: Request) {
     } else if (sort === "name_asc") {
       results.sort((a, b) => a.name.localeCompare(b.name));
     } else if (profileData) {
-      results.sort((a, b) => b.matchScore - a.matchScore);
+      // NULL match scores sort last (no profile data -> never ranked by score).
+      results.sort((a, b) => {
+        if (a.matchScore == null && b.matchScore == null) return 0;
+        if (a.matchScore == null) return 1;
+        if (b.matchScore == null) return -1;
+        return b.matchScore - a.matchScore;
+      });
     } else {
       results.sort((a, b) => a.worldRanking - b.worldRanking);
     }

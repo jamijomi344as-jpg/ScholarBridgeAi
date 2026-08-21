@@ -43,11 +43,11 @@ export async function GET(req: Request) {
 
     const results = allScholarships.map(s => {
       let matchInfo: {
-        matchScore: number;
-        isEligible: boolean;
+        matchScore: number | null;
+        isEligible: boolean | null;
         reasons?: string[];
         potentialIssues?: string[];
-      } = { matchScore: 85, isEligible: true, reasons: [], potentialIssues: [] };
+      } = { matchScore: null, isEligible: null, reasons: [], potentialIssues: [] };
       if (profileData) {
         matchInfo = calculateScholarshipMatch(profileData, s);
       }
@@ -66,7 +66,13 @@ export async function GET(req: Request) {
     });
 
     if (profileData) {
-      results.sort((a, b) => b.matchScore - a.matchScore);
+      // NULL match scores sort last (no profile data -> never ranked by score).
+      results.sort((a, b) => {
+        if (a.matchScore == null && b.matchScore == null) return 0;
+        if (a.matchScore == null) return 1;
+        if (b.matchScore == null) return -1;
+        return b.matchScore - a.matchScore;
+      });
     } else {
       // NULL amounts sort after verified amounts (never treat NULL as $0).
       results.sort((a, b) => {

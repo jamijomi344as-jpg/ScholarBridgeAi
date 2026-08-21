@@ -227,14 +227,20 @@ export function calculateScholarshipMatch(profile: StudentProfileData, scholarsh
     }
   }
 
-  // IELTS check
-  if (scholarship.minIelts && profile.ieltsScore) {
-    if (profile.ieltsScore >= scholarship.minIelts) {
+  // IELTS check — a missing test is a real penalty (same rule as
+  // calculateUniversityMatch): a scholarship requiring IELTS must NEVER show
+  // a high match for a student without an IELTS score.
+  if (scholarship.minIelts) {
+    const hasIelts = typeof profile.ieltsScore === "number" && profile.ieltsScore > 0;
+    if (!hasIelts) {
+      score -= 15;
+      potentialIssues.push(`IELTS ${scholarship.minIelts} required — you don't have an IELTS score yet`);
+    } else if (profile.ieltsScore! >= scholarship.minIelts) {
       score += 10;
       reasons.push(`IELTS ${profile.ieltsScore} meets the ${scholarship.minIelts} requirement`);
     } else {
       score -= 15;
-      potentialIssues.push(`IELTS ${profile.ieltsScore} is below the ${scholarship.minIelts} minimum`);
+      potentialIssues.push(`IELTS ${scholarship.minIelts} required — you have ${profile.ieltsScore}`);
     }
   }
 

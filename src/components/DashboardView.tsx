@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { StudentProfile } from "./Navbar";
 import { 
   Sparkles, 
@@ -38,6 +38,31 @@ export function DashboardView({
 }: DashboardViewProps) {
   const [aiEvaluation, setAiEvaluation] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  // Real scholarship match count (fetched, never a hardcoded claim).
+  const [scholarshipMatchCount, setScholarshipMatchCount] = useState<number | null>(null);
+
+  // Count how many scholarships actually match this profile (matchScore >= 60).
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/scholarships?profileId=${profile.id}&limit=200`);
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data.scholarships)) {
+          const matches = data.scholarships.filter(
+            (s: any) => s.matchScore != null && s.matchScore >= 60
+          ).length;
+          setScholarshipMatchCount(matches);
+        }
+      } catch {
+        // keep null — the UI shows a neutral message instead of a number
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id]);
 
   if (!profile) {
     return (
@@ -382,7 +407,9 @@ export function DashboardView({
               Scholarship Match Guarantee
             </div>
             <p className="text-xs text-emerald-800 leading-relaxed">
-              Based on your budget constraint of **${profile.budgetAnnualUsd?.toLocaleString()}/yr**, you have 8+ fully and partially funded scholarship matches available!
+              {scholarshipMatchCount != null
+                ? `Based on your profile, ${scholarshipMatchCount} scholarship${scholarshipMatchCount === 1 ? "" : "s"} currently match your credentials — open the Scholarship Hub to compare them.`
+                : "Scholarship matches are calculated from your profile — open the Scholarship Hub to see how many fit your credentials."}
             </p>
             <button
               onClick={() => onNavigateTab("scholarships")}

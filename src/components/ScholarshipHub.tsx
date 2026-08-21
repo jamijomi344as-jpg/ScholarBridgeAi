@@ -176,7 +176,8 @@ export function ScholarshipHub({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filtered.map((s) => {
             const isSaved = savedScholarshipIds.has(s.id);
-            const score = s.matchScore || 80;
+            // NULL score = no profile selected — never show a fake 80%.
+            const score = s.matchScore ?? null;
 
             return (
               <div
@@ -193,9 +194,15 @@ export function ScholarshipHub({
                       <h3 className="font-bold text-base text-slate-900 mt-1">{s.title}</h3>
                     </div>
 
-                    <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
-                      {score}% Eligibility
-                    </span>
+                    {score != null ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                        {score}% Eligibility
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                        Select a profile to score
+                      </span>
+                    )}
                   </div>
 
                   {/* Why this match (spec §22) */}
