@@ -87,7 +87,7 @@ export function LandingPage({ onStart, onEnterApp, onSignIn }: LandingPageProps)
             <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center overflow-hidden shadow-sm border border-slate-200">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/Gemini_Generated_Image_wpswjzwpswjzwpsw.jpg"
+                src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
                 alt="ScholarBridge Logo"
                 className="h-8 w-8 object-cover"
               />

@@ -112,7 +112,7 @@ export function Navbar({
       <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-md shadow-indigo-200 border border-slate-200 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/Gemini_Generated_Image_wpswjzwpswjzwpsw.jpg"
+          src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
           alt="ScholarBridge Logo"
           className="h-9 w-9 object-cover"
         />
@@ -259,7 +259,7 @@ export function Navbar({
               <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center overflow-hidden shadow-sm border border-slate-200 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/Gemini_Generated_Image_wpswjzwpswjzwpsw.jpg"
+                  src="https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png"
                   alt="ScholarBridge Logo"
                   className="h-8 w-8 object-cover"
                 />

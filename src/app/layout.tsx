@@ -6,7 +6,7 @@ const SITE_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridgeai-1.onrender.com";
 
 const LOGO_URL =
-  "https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/Gemini_Generated_Image_wpswjzwpswjzwpsw.jpg";
+  "https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -74,10 +74,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: LOGO_URL, sizes: "any" },
-      { url: LOGO_URL, type: "image/jpeg", sizes: "512x512" },
+      { url: LOGO_URL, type: "image/png", sizes: "512x512" },
     ],
     apple: [
-      { url: LOGO_URL, sizes: "180x180", type: "image/jpeg" },
+      { url: LOGO_URL, sizes: "180x180", type: "image/png" },
     ],
     shortcut: LOGO_URL,
   },
