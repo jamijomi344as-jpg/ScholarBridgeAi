@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { StudentProfile } from "./Navbar";
+import { STUDY_FIELD_CATEGORIES } from "@/lib/studyFields";
 
 interface OnboardingWizardProps {
   /**
@@ -366,16 +367,27 @@ export function OnboardingWizard({ profile, onCreated, onComplete }: OnboardingW
 
         {/* STEP 3 — Target major */}
         {step === 2 && (
-          <div>
-            <input
-              className={inputCls}
-              placeholder="e.g. Data Science & AI, Business Administration, Mechanical Engineering…"
-              value={form.targetMajor}
-              onChange={(e) => set("targetMajor", e.target.value)}
-            />
-            <p className="text-[11px] text-slate-400 mt-2">
-              A clear major helps us find universities and grants that fit you.
-            </p>
+          <div className="space-y-4">
+            <div>
+              <label className={labelCls}>Target Major / Field</label>
+              <select
+                className={inputCls}
+                value={form.targetMajor}
+                onChange={(e) => set("targetMajor", e.target.value)}
+              >
+                <option value="" disabled>Select your target program…</option>
+                {STUDY_FIELD_CATEGORIES.map((category) => (
+                  <optgroup key={category.name} label={category.name}>
+                    {category.fields.map((field) => (
+                      <option key={field} value={field}>{field}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Select the program you plan to study. We use it to find matching universities and scholarships.
+              </p>
+            </div>
           </div>
         )}
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { StudentProfile } from "./Navbar";
 import { X, Save, Sparkles, DollarSign, BookOpen, Globe, Award } from "lucide-react";
 import { formatNumber } from "@/lib/format";
+import { STUDY_FIELD_CATEGORIES, STUDY_FIELDS } from "@/lib/studyFields";
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -259,14 +260,25 @@ export function ProfileModal({ isOpen, isNew, onClose, profile, onSave }: Profil
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Target Major / Field</label>
-                <input
-                  type="text"
+                <select
                   required
                   value={formData.targetMajor}
                   onChange={(e) => setFormData({ ...formData, targetMajor: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="e.g. Computer Science"
-                />
+                >
+                  <option value="" disabled>Select your target program…</option>
+                  {formData.targetMajor && !STUDY_FIELDS.includes(formData.targetMajor) && (
+                    <option value={formData.targetMajor}>{formData.targetMajor}</option>
+                  )}
+                  {STUDY_FIELD_CATEGORIES.map((category) => (
+                    <optgroup key={category.name} label={category.name}>
+                      {category.fields.map((field) => (
+                        <option key={field} value={field}>{field}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-slate-500">Choose the program you plan to study.</p>
               </div>
 
               <div>

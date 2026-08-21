@@ -95,7 +95,10 @@ export function UniversityExplorer({
       const params = new URLSearchParams();
       if (activeProfile?.id) params.set("profileId", activeProfile.id.toString());
       if (selectedCountry !== "All") params.set("country", selectedCountry);
-      if (selectedLevel !== "All") params.set("degreeLevel", selectedLevel);
+      // For an active student, the catalogue is always locked to the degree
+      // selected in their profile. Guests may still use the level filter.
+      const effectiveLevel = activeProfile?.degreeLevel || selectedLevel;
+      if (effectiveLevel !== "All") params.set("degreeLevel", effectiveLevel);
       if (maxTuition < 70000) params.set("maxTuition", maxTuition.toString());
       if (search.trim()) params.set("search", search.trim());
       if (sortBy !== "rank") params.set("sort", sortBy);
@@ -208,14 +211,17 @@ export function UniversityExplorer({
           {/* Level Filter */}
           <div>
             <select
-              value={selectedLevel}
+              value={activeProfile?.degreeLevel || selectedLevel}
               onChange={(e) => setSelectedLevel(e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+              disabled={Boolean(activeProfile?.degreeLevel)}
+              aria-label="Target degree level"
+              className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
             >
-              <option value="All">🎓 All Degree Levels</option>
-              <option value="Bachelor">Bachelor Degree</option>
-              <option value="Master">Master Degree</option>
-              <option value="PhD">PhD / Doctorate</option>
+              {!activeProfile?.degreeLevel && <option value="All">🎓 All Degree Levels</option>}
+              <option value="Bachelor">🎓 Bachelor programs</option>
+              <option value="Master">🎓 Master programs</option>
+              <option value="PhD">🎓 PhD / Doctorate programs</option>
+              {activeProfile?.degreeLevel === "Diploma" && <option value="Diploma">🎓 Diploma / Post-grad programs</option>}
             </select>
           </div>
 
@@ -254,7 +260,9 @@ export function UniversityExplorer({
 
       {/* Results Count & Active Info */}
       <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-        <span>Showing {filteredUniversities.length} matched university programs</span>
+        <span>
+          Showing {filteredUniversities.length} {activeProfile?.degreeLevel || selectedLevel !== "All" ? `${activeProfile?.degreeLevel || selectedLevel} ` : ""}matched university programs
+        </span>
         <span>Sorted by Match Score & Fit</span>
       </div>
 
