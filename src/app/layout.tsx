@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 
-const LOGO_URL = "https://llwrzitajdsnqzpvflnj.supabase.co/storage/v1/object/public/LOGO/logo.png";
 const SITE_URL =
-  process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridge-ai.onrender.com";
+  process.env.NEXT_PUBLIC_APP_URL || "https://scholarbridgeai-1.onrender.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -14,11 +13,11 @@ export const metadata: Metadata = {
     google: "EZ2ipQrYUQxTQEBlEGYcqAOfVHm6pc0oIm1BYkN2VTs",
   },
   title: {
-    default: "ScholarBridge — Xorijda O'qish, Grant va Universitet Tanlash Platformasi",
-    template: "%s | ScholarBridge",
+    default: "ScholarBridgeAI — Xorijda O'qish, Grant va Universitet Tanlash",
+    template: "%s | ScholarBridgeAI",
   },
   description:
-    "ScholarBridge — GPA, IELTS va byudjetga mos xorijiy universitetlar va grantlarni toping. Universitet tanlash, SOP yozish va ariza topshirishda AI yordami.",
+    "ScholarBridgeAI — GPA, IELTS va byudjetga mos xorijiy universitetlar va grantlarni toping. Universitet tanlash, SOP yozish va ariza topshirishda AI yordami.",
   keywords: [
     "xorijda o'qish",
     "grant",
@@ -35,24 +34,32 @@ export const metadata: Metadata = {
     "Fulbright",
     "xalqaro talaba",
     "xorijiy universitetlar",
+    "ScholarBridgeAI",
     "ScholarBridge",
   ],
   openGraph: {
     type: "website",
     locale: "uz_UZ",
     url: SITE_URL,
-    siteName: "ScholarBridge",
-    title: "ScholarBridge — Xorijda O'qish, Grant va Universitet Tanlash Platformasi",
+    siteName: "ScholarBridgeAI",
+    title: "ScholarBridgeAI — Xorijda O'qish, Grant va Universitet Tanlash",
     description:
-      "GPA, IELTS va byudjetga mos xorijiy universitetlar va grantlarni toping. Universitet tanlash, SOP yozish va ariza topshirishda AI yordami.",
+      "ScholarBridgeAI — GPA, IELTS va byudjetga mos xorijiy universitetlar va grantlarni toping. Universitet tanlash, SOP yozish va ariza topshirishda AI yordami.",
     images: [
       {
-        url: LOGO_URL,
-        width: 512,
-        height: 512,
-        alt: "ScholarBridge logotipi",
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "ScholarBridgeAI logotipi",
       },
     ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ScholarBridgeAI — Xorijda O'qish, Grant va Universitet Tanlash",
+    description:
+      "ScholarBridgeAI — GPA, IELTS va byudjetga mos xorijiy universitetlar va grantlarni toping. Universitet tanlash, SOP yozish va ariza topshirishda AI yordami.",
+    images: ["/og-image.png"],
   },
   robots: {
     index: true,
@@ -62,8 +69,14 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   icons: {
-    icon: LOGO_URL,
-    apple: LOGO_URL,
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
   },
 };
 
