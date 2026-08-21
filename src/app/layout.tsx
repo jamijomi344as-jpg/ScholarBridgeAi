@@ -10,6 +10,7 @@ const LOGO_URL =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  manifest: "/manifest.json",
   // Google Search Console ownership verification (renders the
   // <meta name="google-site-verification" .../> tag in <head>).
   verification: {
