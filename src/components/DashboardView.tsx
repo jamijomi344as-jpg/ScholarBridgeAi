@@ -18,7 +18,6 @@ import {
   Zap,
   BookOpen
 } from "lucide-react";
-import { formatMoney } from "@/lib/format";
 
 interface DashboardViewProps {
   profile: StudentProfile | null;
@@ -38,8 +37,6 @@ export function DashboardView({
   onEditProfile,
 }: DashboardViewProps) {
   const [aiEvaluation, setAiEvaluation] = useState<string | null>(null);
-  const [aiEvaluationUsed, setAiEvaluationUsed] = useState(false);
-  const [aiUnavailable, setAiUnavailable] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
   if (!profile) {
@@ -52,8 +49,6 @@ export function DashboardView({
 
   const runAiAudit = async () => {
     setIsEvaluating(true);
-    setAiUnavailable(false);
-    setAiEvaluation(null);
     try {
       const res = await fetch("/api/ai/evaluate-profile", {
         method: "POST",
@@ -62,14 +57,7 @@ export function DashboardView({
       });
       const data = await res.json();
       if (data.evaluation) {
-        // Real AI analysis is shown only when the AI provider answered.
-        // The built-in estimate (aiUsed=false) is never presented as AI.
-        setAiEvaluationUsed(Boolean(data.aiUsed));
-        if (data.aiUsed) {
-          setAiEvaluation(data.evaluation);
-        } else {
-          setAiUnavailable(true);
-        }
+        setAiEvaluation(data.evaluation);
       }
     } catch (err) {
       console.error(err);
@@ -78,21 +66,35 @@ export function DashboardView({
     }
   };
 
-  // Calculate quick score estimate
+  // Admissions Index — deterministic quick estimate (NOT AI).
+  // Same honesty rule as the match scorer: a missing IELTS is NOT treated
+  // as 6.5 — it contributes 0 points. No work/pub = 0 points.
   const normGpa = (profile.gpa / profile.gpaScale) * 4.0;
   const gpaPercent = Math.round((normGpa / 4.0) * 100);
+  const hasIelts = typeof profile.ieltsScore === "number" && profile.ieltsScore > 0;
+  const ieltsPoints = hasIelts ? (profile.ieltsScore! / 9) * 25 : 0;
   const compositeScore = Math.min(
     96,
     Math.max(
-      65,
+      30,
       Math.round(
         gpaPercent * 0.5 +
-          ((profile.ieltsScore || 6.5) / 9) * 25 +
-          ((profile.workExperienceYears || 0) > 0 ? 10 : 5) +
-          ((profile.researchPublications || 0) > 0 ? 10 : 5)
+          ieltsPoints +
+          ((profile.workExperienceYears || 0) > 0 ? 10 : 0) +
+          ((profile.researchPublications || 0) > 0 ? 10 : 0)
       )
     )
   );
+
+  // Score-based tier label (deterministic, not AI).
+  const admissionTier =
+    compositeScore >= 85
+      ? "Top Tier Candidate"
+      : compositeScore >= 70
+      ? "Competitive Global Tier"
+      : compositeScore >= 55
+      ? "Developing Profile"
+      : "Needs Strengthening";
 
   let preferredCountriesList: string[] = ["United States", "United Kingdom", "Canada"];
   try {
@@ -131,7 +133,7 @@ export function DashboardView({
                 🎓 Level: <strong className="text-white">{profile.degreeLevel}</strong>
               </span>
               <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-medium border border-white/10">
-                💰 Budget Limit: <strong className="text-emerald-300">{formatMoney(profile.budgetAnnualUsd, "USD", { suffix: "/yr" })}</strong>
+                💰 Budget Limit: <strong className="text-emerald-300">${profile.budgetAnnualUsd?.toLocaleString()}/yr</strong>
               </span>
               <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-medium border border-white/10">
                 🏆 Pubs/Work: <strong className="text-amber-300">{profile.researchPublications || 0} Pubs • {profile.workExperienceYears || 0} yrs Exp</strong>
@@ -153,7 +155,7 @@ export function DashboardView({
             </div>
 
             <div className="text-xs text-indigo-100 font-medium">
-              Competitive Global Tier
+              {admissionTier}
             </div>
 
             <button
@@ -162,7 +164,7 @@ export function DashboardView({
               className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-900 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all"
             >
               <Bot className="h-4 w-4" />
-              {isEvaluating ? "Analyzing Profile..." : "Run AI Audit"}
+              {isEvaluating ? "Analyzing Profile..." : "Run Gemini AI Audit"}
             </button>
           </div>
         </div>
@@ -227,14 +229,13 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* AI Evaluation Report Output Modal/Card — real AI output only.
-          The built-in fallback estimate is never shown as "AI analysis". */}
-      {aiEvaluation && aiEvaluationUsed && (
+      {/* Gemini AI Evaluation Report Output Modal/Card */}
+      {aiEvaluation && (
         <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-lg space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 text-indigo-700 font-bold text-lg">
               <Bot className="h-5 w-5" />
-              ScholarBridge AI Strategic Evaluation
+              ScholarBridge Gemini AI Strategic Evaluation
             </div>
             <button
               onClick={() => setAiEvaluation(null)}
@@ -247,28 +248,6 @@ export function DashboardView({
           <div className="prose prose-indigo max-w-none text-xs sm:text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
             {aiEvaluation}
           </div>
-        </div>
-      )}
-
-      {/* AI unavailable notice — same rule as the sidebar: don't show a fake
-          "AI analysis" when the AI provider is not connected. */}
-      {aiUnavailable && (
-        <div className="bg-white rounded-2xl p-5 border border-amber-200 bg-amber-50/60 space-y-2">
-          <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
-            <AlertCircle className="h-4 w-4" />
-            AI analysis not available yet
-          </div>
-          <p className="text-xs text-amber-700 leading-relaxed">
-            The AI provider is not connected on the server (OPENROUTER_API_KEY not configured).
-            Once it is set, the real AI evaluation will appear here. The built-in estimate is
-            hidden so it is never mistaken for AI analysis.
-          </p>
-          <button
-            onClick={() => setAiUnavailable(false)}
-            className="text-[11px] font-bold text-amber-800 underline"
-          >
-            Dismiss
-          </button>
         </div>
       )}
 
@@ -377,7 +356,7 @@ export function DashboardView({
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                 <span className="font-medium text-slate-700">Annual Tuition Budget</span>
                 <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
-                  {formatMoney(profile.budgetAnnualUsd, "USD")}
+                  ${profile.budgetAnnualUsd?.toLocaleString()}
                 </span>
               </div>
 
@@ -403,7 +382,7 @@ export function DashboardView({
               Scholarship Match Guarantee
             </div>
             <p className="text-xs text-emerald-800 leading-relaxed">
-              Based on your budget constraint of **{formatMoney(profile.budgetAnnualUsd, "USD", { suffix: "/yr" })}**, you have 8+ fully and partially funded scholarship matches available!
+              Based on your budget constraint of **${profile.budgetAnnualUsd?.toLocaleString()}/yr**, you have 8+ fully and partially funded scholarship matches available!
             </p>
             <button
               onClick={() => onNavigateTab("scholarships")}
